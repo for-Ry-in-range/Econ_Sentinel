@@ -1,0 +1,38 @@
+{
+  "examples": {
+    "fred_inflation": {
+      "series_id": "CPIAUCSL",
+      "data": [
+        {"date": "2026-02-11", "value": "308.234"}
+      ]
+    },
+    "fred_simplified": {
+      "metric": "inflation_rate_cpi",
+      "value": 4.8,
+      "date": "2026-02-11",
+      "source": "fred"
+    },
+    "port_congestion_multiple": {
+      "ports": [
+        {"port": "los_angeles", "congestion_count": 42, "date": "2026-02-11"},
+        {"port": "new_york", "congestion_count": 28, "date": "2026-02-11"},
+        {"port": "savannah", "congestion_count": 15, "date": "2026-02-11"}
+      ]
+    },
+    "port_congestion_single": {
+      "port": "los_angeles",
+      "congestion_count": 42,
+      "date": "2026-02-11"
+    },
+    "freight_cost_index": {
+      "freight_cost_index": 168.5,
+      "date": "2026-02-11"
+    },
+    "generic_metric": {
+      "metric": "freight_cost_index",
+      "value": 145.3,
+      "timestamp": "2026-02-11T00:00:00Z",
+      "source": "freight"
+    }
+  }
+}

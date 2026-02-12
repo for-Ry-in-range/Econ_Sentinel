@@ -112,4 +112,40 @@ class DataParser:
             else:
                 print("Unsupported content type")
                 return None
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            print(f"Error parsing S3 object: {e}")
+            return None
+    
+    @staticmethod
+    def normalize_timestamp(timestamp: str) -> str:
+        """
+        Switch timestamp to ISO 8601 format.
+        Args:
+            timestamp: various time formats
+        Returns:
+            ISO 8601 timestamp string
+        """
+
+        # If already in ISO format
+        if 'T' in timestamp and ('Z' in timestamp or '+' in timestamp or '-' in timestamp[-6:]):
+            return timestamp
         
+        # If only date then add time
+        if len(timestamp) == 10 and timestamp.count('-') == 2:
+            return f"{timestamp}T00:00:00Z"
+        
+        # Try to reformat
+        try:
+            from datetime import datetime
+            # Try a couple common formats
+            for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
+                try:
+                    dt = datetime.strptime(timestamp, fmt)
+                    return dt.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+                except ValueError:
+                    continue
+        except Exception:
+            pass
+        
+        # Return unchanged if it couldn't be parsed
+        return timestamp

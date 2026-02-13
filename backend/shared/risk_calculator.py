@@ -37,6 +37,13 @@ class RiskCalculator:
     
     @staticmethod
     def calculate_risk_score(pct_change: float) -> int:
+        """
+        Calculate risk score out of 100 based on percent change
+        Args:
+            pct_change: Percent change
+        Returns:
+            risk score out of 100
+        """
         abs_change = abs(pct_change)
         
         if abs_change < RiskCalculator.NORMAL_THRESHOLD:

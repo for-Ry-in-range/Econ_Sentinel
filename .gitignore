@@ -14,3 +14,13 @@ ENV/
 *.swo
 .DS_Store
 Thumbs.db
+
+# CDK
+backend/infrastructure/cdk.out/
+backend/infrastructure/*.egg-info/
+backend/infrastructure/.venv/
+
+# Lambda dependencies
+backend/lambdas/*/boto3/
+backend/lambdas/*/botocore/
+backend/lambdas/*/*.dist-info/

@@ -1,13 +1,5 @@
 """
-API Lambda function - handles HTTP requests for dashboard and alert preferences.
-
-Endpoints:
-- GET /scores/latest?metric={metric}
-- GET /scores?metric={metric}&start={date}&end={date}
-- GET /metrics
-- GET /alerts (requires user_id in headers/context)
-- PUT /alerts (requires user_id in headers/context)
-- DELETE /alerts/{metric} (requires user_id in headers/context)
+Handles HTTP requests for dashboard and alert preferences.
 """
 
 import json
@@ -15,7 +7,6 @@ import os
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 
-# Add parent directory to path for shared imports
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
@@ -25,24 +16,9 @@ from shared.dynamodb_client import DynamoDBClient
 dynamodb_client = DynamoDBClient()
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Dict[str, Any], context: Any):
     """
     Lambda handler for API Gateway requests.
-    
-    Event structure from API Gateway:
-    {
-        "httpMethod": "GET",
-        "path": "/scores/latest",
-        "queryStringParameters": {"metric": "freight_cost_index"},
-        "headers": {...},
-        "requestContext": {
-            "authorizer": {
-                "claims": {
-                    "sub": "user-id"  # When auth is added
-                }
-            }
-        }
-    }
     """
     print(f"Received API request: {json.dumps(event)}")
     
@@ -50,20 +26,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     path = event.get('path', '')
     query_params = event.get('queryStringParameters') or {}
     
-    # Extract user_id from authorizer (when auth is added)
-    # For now, we'll use a header or query param as fallback
+    # Extract user_id from authorizer
     user_id = None
     if 'requestContext' in event and 'authorizer' in event['requestContext']:
         claims = event['requestContext']['authorizer'].get('claims', {})
         user_id = claims.get('sub')
     
-    # Fallback: get from headers or query params (for testing without auth)
+    # Fallback
     if not user_id:
         headers = event.get('headers', {})
         user_id = headers.get('x-user-id') or query_params.get('user_id')
     
     try:
-        # Route requests
+        # Call the correct function
         if path == '/scores/latest' and http_method == 'GET':
             return get_latest_score(query_params)
         elif path == '/scores' and http_method == 'GET':
@@ -86,8 +61,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return create_response(500, {'error': str(e)})
 
 
-def get_latest_score(query_params: Dict[str, str]) -> Dict[str, Any]:
-    """Get latest risk score for a metric."""
+def get_latest_score(query_params: Dict[str, str]):
+    """Get latest risk score for a metric"""
     metric = query_params.get('metric')
     
     if not metric:
@@ -101,8 +76,8 @@ def get_latest_score(query_params: Dict[str, str]) -> Dict[str, Any]:
     return create_response(200, score)
 
 
-def get_scores_time_series(query_params: Dict[str, str]) -> Dict[str, Any]:
-    """Get time series of risk scores for a metric."""
+def get_scores_time_series(query_params: Dict[str, str]):
+    """Get time series of risk scores for a metric"""
     metric = query_params.get('metric')
     start_date = query_params.get('start')
     end_date = query_params.get('end')
@@ -127,7 +102,7 @@ def get_scores_time_series(query_params: Dict[str, str]) -> Dict[str, Any]:
 
 
 def get_all_metrics() -> Dict[str, Any]:
-    """Get list of all available metrics."""
+    """Get list of all available metrics"""
     metrics = dynamodb_client.get_all_metrics()
     
     return create_response(200, {
@@ -136,7 +111,7 @@ def get_all_metrics() -> Dict[str, Any]:
     })
 
 
-def get_user_alerts(user_id: Optional[str]) -> Dict[str, Any]:
+def get_user_alerts(user_id: Optional[str]):
     """Get all alert rules for a user."""
     if not user_id:
         return create_response(401, {'error': 'Authentication required'})
@@ -150,8 +125,8 @@ def get_user_alerts(user_id: Optional[str]) -> Dict[str, Any]:
     })
 
 
-def create_or_update_alert(user_id: Optional[str], body: Dict[str, Any]) -> Dict[str, Any]:
-    """Create or update an alert rule."""
+def create_or_update_alert(user_id: Optional[str], body: Dict[str, Any]):
+    """Create or update an alert rule"""
     if not user_id:
         return create_response(401, {'error': 'Authentication required'})
     
@@ -181,8 +156,8 @@ def create_or_update_alert(user_id: Optional[str], body: Dict[str, Any]) -> Dict
     })
 
 
-def delete_alert(user_id: Optional[str], metric: str) -> Dict[str, Any]:
-    """Delete an alert rule."""
+def delete_alert(user_id: Optional[str], metric: str):
+    """Delete an alert rule"""
     if not user_id:
         return create_response(401, {'error': 'Authentication required'})
     
@@ -199,12 +174,12 @@ def delete_alert(user_id: Optional[str], metric: str) -> Dict[str, Any]:
 
 
 def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
-    """Create API Gateway response."""
+    """API Gateway response template"""
     return {
         'statusCode': status_code,
         'headers': {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',  # Configure CORS properly in production
+            'Access-Control-Allow-Origin': '*',  # Edit CORS during production
             'Access-Control-Allow-Headers': 'Content-Type,Authorization,x-user-id',
             'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
         },

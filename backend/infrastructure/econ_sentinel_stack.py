@@ -1,5 +1,7 @@
 """
-AWS CDK Stack for Econ Sentinel Backend.
+AWS CDK Stack
+
+Sets up S3 bucket, 2 DynamoDB tables, 2 Lambda functions
 """
 
 from aws_cdk import (
@@ -20,30 +22,29 @@ import os
 
 
 class EconSentinelStack(Stack):
-    """Main CDK Stack for Econ Sentinel Backend."""
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # Get S3 bucket name from environment or use default
+        # Get S3 bucket name
         raw_data_bucket_name = os.environ.get(
             'RAW_DATA_BUCKET_NAME',
             f'econ-sentinel-raw-{self.account}-{self.region}'
         )
 
-        # ========== S3 Bucket for Raw Data ==========
+        # S3 Bucket for Raw Data
         raw_data_bucket = s3.Bucket(
             self,
             "RawDataBucket",
             bucket_name=raw_data_bucket_name,
             versioned=False,
-            removal_policy=RemovalPolicy.RETAIN,  # Keep data on stack deletion
+            removal_policy=RemovalPolicy.RETAIN,
             auto_delete_objects=False,
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
         )
 
-        # ========== DynamoDB Tables ==========
+        # DynamoDB Tables:
         
         # Risk Scores Table
         risk_scores_table = dynamodb.Table(
@@ -59,11 +60,11 @@ class EconSentinelStack(Stack):
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.RETAIN,  # Keep data on stack deletion
+            removal_policy=RemovalPolicy.RETAIN,
             point_in_time_recovery=True,
         )
 
-        # Add GSI for querying by timestamp (optional, for time-range queries)
+        # Add global secondary index for querying by timestamp
         risk_scores_table.add_global_secondary_index(
             index_name="timestamp-index",
             partition_key=dynamodb.Attribute(
@@ -93,7 +94,7 @@ class EconSentinelStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
-        # Add GSI for querying alerts by metric (for alert dispatch)
+        # Add global secondary index for querying alerts by metric
         alert_rules_table.add_global_secondary_index(
             index_name="metric-index",
             partition_key=dynamodb.Attribute(
@@ -106,12 +107,9 @@ class EconSentinelStack(Stack):
             )
         )
 
-        # ========== Lambda Functions ==========
+        # Lambda functions:
 
-        # Shared Lambda layer for common dependencies (optional optimization)
-        # For now, we'll bundle dependencies directly in each Lambda
-
-        # Analysis Lambda (triggered by S3 events)
+        # Analysis Lambda
         analysis_lambda = _lambda.Function(
             self,
             "AnalysisLambda",
@@ -129,7 +127,6 @@ class EconSentinelStack(Stack):
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
 
-        # Grant permissions
         raw_data_bucket.grant_read(analysis_lambda)
         risk_scores_table.grant_read_write_data(analysis_lambda)
         alert_rules_table.grant_read_data(analysis_lambda)
@@ -141,7 +138,7 @@ class EconSentinelStack(Stack):
             s3.NotificationKeyFilter(suffix=".json")  # Only trigger on JSON files
         )
 
-        # API Lambda (handles HTTP requests)
+        # Create Lambda function
         api_lambda = _lambda.Function(
             self,
             "ApiLambda",
@@ -158,11 +155,12 @@ class EconSentinelStack(Stack):
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
 
-        # Grant permissions
+        # Give permissions
         risk_scores_table.grant_read_data(api_lambda)
         alert_rules_table.grant_read_write_data(api_lambda)
 
-        # ========== API Gateway ==========
+
+        # API Gateway:
         
         # Create REST API
         api = apigateway.RestApi(
@@ -177,13 +175,12 @@ class EconSentinelStack(Stack):
             ),
         )
 
-        # Create Lambda integration
+
         api_lambda_integration = apigateway.LambdaIntegration(
             api_lambda,
             request_templates={"application/json": '{"statusCode": "200"}'},
         )
 
-        # Define API routes
         # GET /scores/latest?metric={metric}
         scores_latest = api.root.add_resource("scores").add_resource("latest")
         scores_latest.add_method("GET", api_lambda_integration)
@@ -211,7 +208,9 @@ class EconSentinelStack(Stack):
         for resource in [scores_latest, scores, metrics, alerts, alert_metric]:
             resource.add_method("OPTIONS", api_lambda_integration)
 
-        # ========== Outputs ==========
+        
+        # outputs:
+
         CfnOutput(
             self,
             "ApiEndpoint",

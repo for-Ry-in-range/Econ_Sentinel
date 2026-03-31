@@ -5,7 +5,7 @@ DynamoDB utilities
 import os
 import boto3 # for talking to AWS
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
@@ -166,7 +166,8 @@ class DynamoDBClient:
         user_id: str,
         metric: str,
         threshold: float,
-        enabled: bool = True
+        enabled: bool = True,
+        email: Optional[str] = None
     ):
         """
         Save or update an alert rule
@@ -175,6 +176,7 @@ class DynamoDBClient:
             metric: Metric to monitor
             threshold: Threshold percentage for alert
             enabled: if the alert is enabled or not
+            email: Email address to send alerts to
         """
         item = {
             'user_id': user_id,
@@ -183,6 +185,8 @@ class DynamoDBClient:
             'enabled': enabled,
             'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
+        if email:
+            item['email'] = email
 
         self.alert_rules_table.put_item(Item=item)
 

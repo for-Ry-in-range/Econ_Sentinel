@@ -19,9 +19,12 @@ from shared.data_parser import DataParser
 
 
 s3_client = boto3.client('s3')
+ses_client = boto3.client('ses')  # AWS Simple Email Service sends emails
 dynamodb_client = DynamoDBClient()
 data_parser = DataParser()
 risk_calculator = RiskCalculator()
+
+SENDER_EMAIL = os.environ.get('SES_SENDER_EMAIL', '')  # the 'from'
 
 
 def lambda_handler(event: Dict[str, Any], context: Any):
@@ -163,7 +166,7 @@ def process_metric(metric: str, value: float, timestamp: str, source_object_key:
         trigger_alerts(metric, risk_assessment, value)
 
 
-def trigger_alerts(metric: str, risk_assessment: Dict[str, Any], value: float) -> None:
+def trigger_alerts(metric: str, risk_assessment: Dict[str, Any], value: float):
     """
     Send alerts to users who have alert rules set for this metric.
     Args:
@@ -171,8 +174,51 @@ def trigger_alerts(metric: str, risk_assessment: Dict[str, Any], value: float) -
         risk_assessment: Risk assessment dict
         value: Current value
     """
-    # TODO: Get alert rules for this metric
-    
     print(f"Alert check for {metric}: {risk_assessment['severity']} (pct_change: {risk_assessment['pct_change']}%)")
-    
-    # TODO: Send the actual alerts
+
+    alert_rules = dynamodb_client.get_alert_rules_for_metric(metric)
+    triggered_count = 0
+
+    for rule in alert_rules:
+        if not rule.get('enabled', True):
+            continue
+        threshold = float(rule.get('threshold', 0))
+        if abs(risk_assessment['pct_change']) >= threshold:
+            email = rule.get('email')
+            if email and SENDER_EMAIL:
+                _send_alert_email(email, metric, risk_assessment, value, rule)
+                triggered_count += 1
+
+    print(f"Triggered {triggered_count} alert(s) for {metric}")
+
+
+def _send_alert_email(recipient: str, metric: str, risk_assessment: Dict[str, Any], value: float, rule: Dict[str, Any]):
+    """Send an alert email using SES"""
+    severity = risk_assessment['severity'].upper()
+    pct_change = risk_assessment['pct_change']
+    risk_score = risk_assessment['risk_score']
+
+    subject = f"Econ Sentinel - {severity} Alert: {metric}"
+    body = (
+        f"Econ Sentinel Alert\n\n"
+        f"Metric:            {metric}\n"
+        f"Severity:          {severity}\n"
+        f"Current Value:     {value}\n"
+        f"Change (30d avg):  {pct_change:+.2f}%\n"
+        f"Risk Score:        {risk_score}/100\n"
+        f"Your Threshold:    {rule.get('threshold')}%\n\n"
+        f"Log in to Econ Sentinel to view the full dashboard."
+    )
+
+    try:
+        ses_client.send_email(
+            Source=SENDER_EMAIL,
+            Destination={"ToAddresses": [recipient]},
+            Message={
+                "Subject": {"Data": subject},
+                "Body": {"Text": {"Data": body}},
+            },
+        )
+        print(f"Alert email sent to {recipient} for {metric}")
+    except Exception as e:
+        print(f"Failed to send alert email; {e}")

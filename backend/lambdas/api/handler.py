@@ -133,26 +133,28 @@ def create_or_update_alert(user_id: Optional[str], body: Dict[str, Any]):
     metric = body.get('metric')
     threshold = body.get('threshold')
     enabled = body.get('enabled', True)
-    
+    email = body.get('email')
+
     if not metric:
         return create_response(400, {'error': 'metric is required'})
-    
+
     if threshold is None:
         return create_response(400, {'error': 'threshold is required'})
-    
+
     try:
         threshold_float = float(threshold)
     except (ValueError, TypeError):
         return create_response(400, {'error': 'threshold must be a number'})
-    
-    dynamodb_client.save_alert_rule(user_id, metric, threshold_float, enabled)
-    
+
+    dynamodb_client.save_alert_rule(user_id, metric, threshold_float, enabled, email)
+
     return create_response(200, {
         'message': 'Alert rule created/updated',
         'user_id': user_id,
         'metric': metric,
         'threshold': threshold_float,
-        'enabled': enabled
+        'enabled': enabled,
+        'email': email
     })
 
 

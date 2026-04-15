@@ -1,7 +1,8 @@
 """
 AWS CDK Stack
 
-Sets up S3 bucket, 2 DynamoDB tables, 2 Lambda functions
+Sets up S3 bucket, 2 DynamoDB tables, 2 Lambda functions,
+API Gateway, ECR repo, ECS Fargate cluster, and daily ingestion schedule
 """
 
 from aws_cdk import (
@@ -15,6 +16,11 @@ from aws_cdk import (
     aws_apigateway as apigateway,
     aws_iam as iam,
     aws_logs as logs,
+    aws_ecr as ecr,
+    aws_ecs as ecs,
+    aws_ec2 as ec2,
+    aws_events as events,
+    aws_events_targets as events_targets,
     CfnOutput,
 )
 from constructs import Construct
@@ -45,7 +51,7 @@ class EconSentinelStack(Stack):
         )
 
         # DynamoDB Tables:
-        
+
         # Risk Scores Table
         risk_scores_table = dynamodb.Table(
             self,
@@ -123,6 +129,7 @@ class EconSentinelStack(Stack):
                 "RISK_SCORES_TABLE_NAME": risk_scores_table.table_name,
                 "ALERT_RULES_TABLE_NAME": alert_rules_table.table_name,
                 "RAW_DATA_BUCKET_NAME": raw_data_bucket.bucket_name,
+                "SES_SENDER_EMAIL": os.environ.get("SES_SENDER_EMAIL", "alerts@econ-sentinel.com"),
             },
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
@@ -131,6 +138,14 @@ class EconSentinelStack(Stack):
         risk_scores_table.grant_read_write_data(analysis_lambda)
         alert_rules_table.grant_read_data(analysis_lambda)
 
+        # Allow analysis lambda to send SES emails
+        analysis_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["ses:SendEmail", "ses:SendRawEmail"],
+                resources=["*"],
+            )
+        )
+
         # S3 Event Notification to trigger Analysis Lambda
         raw_data_bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED,
@@ -138,7 +153,7 @@ class EconSentinelStack(Stack):
             s3.NotificationKeyFilter(suffix=".json")  # Only trigger on JSON files
         )
 
-        # Create Lambda function
+        # API Lambda
         api_lambda = _lambda.Function(
             self,
             "ApiLambda",
@@ -155,14 +170,11 @@ class EconSentinelStack(Stack):
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
 
-        # Give permissions
         risk_scores_table.grant_read_data(api_lambda)
         alert_rules_table.grant_read_write_data(api_lambda)
 
-
         # API Gateway:
-        
-        # Create REST API
+
         api = apigateway.RestApi(
             self,
             "EconSentinelApi",
@@ -175,41 +187,103 @@ class EconSentinelStack(Stack):
             ),
         )
 
-
         api_lambda_integration = apigateway.LambdaIntegration(
             api_lambda,
             request_templates={"application/json": '{"statusCode": "200"}'},
         )
 
         # GET /scores/latest?metric={metric}
-        scores_latest = api.root.add_resource("scores").add_resource("latest")
-        scores_latest.add_method("GET", api_lambda_integration)
-
         # GET /scores?metric={metric}&start={date}&end={date}
         scores = api.root.add_resource("scores")
         scores.add_method("GET", api_lambda_integration)
+        scores_latest = scores.add_resource("latest")
+        scores_latest.add_method("GET", api_lambda_integration)
 
         # GET /metrics
         metrics = api.root.add_resource("metrics")
         metrics.add_method("GET", api_lambda_integration)
 
-        # GET /alerts
+        # GET/PUT /alerts
+        # DELETE /alerts/{metric}
         alerts = api.root.add_resource("alerts")
         alerts.add_method("GET", api_lambda_integration)
-
-        # PUT /alerts
         alerts.add_method("PUT", api_lambda_integration)
-
-        # DELETE /alerts/{metric}
         alert_metric = alerts.add_resource("{metric}")
         alert_metric.add_method("DELETE", api_lambda_integration)
 
-        # OPTIONS for CORS
+        # Add options for CORS (security)
         for resource in [scores_latest, scores, metrics, alerts, alert_metric]:
             resource.add_method("OPTIONS", api_lambda_integration)
 
-        
-        # outputs:
+
+        # Ingestion Layer: ECR, ECS Fargate, daily schedule
+
+        # ECR repository for ingestion Docker image
+        ingestion_repo = ecr.Repository(
+            self,
+            "IngestionRepository",
+            repository_name="econ-sentinel-ingestion",
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        vpc = ec2.Vpc.from_lookup(self, "DefaultVpc", is_default=True)
+
+        cluster = ecs.Cluster(
+            self,
+            "EconSentinelCluster",
+            cluster_name="econ-sentinel",
+            vpc=vpc,
+        )
+
+        # Set up Fargate task definition for ingestion container
+        ingestion_task = ecs.FargateTaskDefinition(
+            self,
+            "IngestionTaskDef",
+            memory_limit_mib=512,
+            cpu=256,
+        )
+
+        # Give ingestion_task write access to s3 so it can upload data
+        raw_data_bucket.grant_write(ingestion_task.task_role)
+
+        ingestion_task.add_container(
+            "IngestionContainer",
+            image=ecs.ContainerImage.from_ecr_repository(ingestion_repo),
+            environment={
+                "RAW_DATA_BUCKET_NAME": raw_data_bucket.bucket_name,
+                
+                # Set FRED_API_KEY as env var before deploying
+                "FRED_API_KEY": os.environ.get("FRED_API_KEY", ""),
+            },
+            logging=ecs.LogDrivers.aws_logs(  # CloudWatch
+                stream_prefix="ingestion",
+                log_retention=logs.RetentionDays.ONE_WEEK,
+            ),
+        )
+
+        # EventBridge - creates scheduled event to run ingestion once a day
+        daily_schedule = events.Rule(
+            self,
+            "DailyIngestionRule",
+            rule_name="econ-sentinel-daily-ingestion",
+            description="Triggers ECS ingestion every day at 6 AM UTC",
+            schedule=events.Schedule.cron(hour="6", minute="0"),
+        )
+        daily_schedule.add_target(
+            events_targets.EcsTask(
+                cluster=cluster,
+                task_definition=ingestion_task,
+                launch_type=ecs.LaunchType.FARGATE,
+                platform_version=ecs.FargatePlatformVersion.LATEST,
+                subnet_selection=ec2.SubnetSelection(
+                    subnet_type=ec2.SubnetType.PUBLIC
+                ),
+                assign_public_ip=True,
+            )
+        )
+
+
+        # Print values to terminal after CDK deploy finishes:
 
         CfnOutput(
             self,
@@ -237,4 +311,18 @@ class EconSentinelStack(Stack):
             "AlertRulesTableName",
             value=alert_rules_table.table_name,
             description="DynamoDB table for user alert rules"
+        )
+
+        CfnOutput(
+            self,
+            "IngestionRepositoryUri",
+            value=ingestion_repo.repository_uri,
+            description="ECR URI for the ingestion Docker image"
+        )
+
+        CfnOutput(
+            self,
+            "EcsClusterName",
+            value=cluster.cluster_name,
+            description="ECS cluster name"
         )

@@ -14,6 +14,7 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_lambda as _lambda,
     aws_apigateway as apigateway,
+    aws_cognito as cognito,
     aws_iam as iam,
     aws_logs as logs,
     aws_ecr as ecr,
@@ -173,6 +174,37 @@ class EconSentinelStack(Stack):
         risk_scores_table.grant_read_data(api_lambda)
         alert_rules_table.grant_read_write_data(api_lambda)
 
+        # Cognito user pool
+        user_pool = cognito.UserPool(
+            self,
+            "EconSentinelUserPool",
+            user_pool_name="econ-sentinel-users",
+            self_sign_up_enabled=True,
+            sign_in_aliases=cognito.SignInAliases(email=True),
+            auto_verify=cognito.AutoVerifiedAttrs(email=True),
+            password_policy=cognito.PasswordPolicy(
+                min_length=8,
+                require_uppercase=True,
+                require_digits=True,
+                require_symbols=False,
+            ),
+            account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        user_pool_client = cognito.UserPoolClient(
+            self,
+            "EconSentinelUserPoolClient",
+            user_pool=user_pool,
+            user_pool_client_name="econ-sentinel-web-client",
+            auth_flows=cognito.AuthFlow(
+                user_password=True,
+                user_srp=True,
+            ),
+            prevent_user_existence_errors=True,
+        )
+
+
         # API Gateway:
 
         api = apigateway.RestApi(
@@ -192,28 +224,43 @@ class EconSentinelStack(Stack):
             request_templates={"application/json": '{"statusCode": "200"}'},
         )
 
+        cognito_authorizer = apigateway.CognitoUserPoolsAuthorizer(
+            self,
+            "CognitoAuthorizer",
+            cognito_user_pools=[user_pool],
+            authorizer_name="econ-sentinel-cognito-authorizer",
+            identity_source="method.request.header.Authorization",
+        )
+
+        def add_auth_method(resource, http_method, integration):
+            resource.add_method(
+                http_method,
+                integration,
+                authorization_type=apigateway.AuthorizationType.COGNITO,
+                authorizer=cognito_authorizer,
+            )
+
         # GET /scores/latest?metric={metric}
         # GET /scores?metric={metric}&start={date}&end={date}
         scores = api.root.add_resource("scores")
-        scores.add_method("GET", api_lambda_integration)
+        # Add GET /scores into API Gateway and add the Cognito authorizer to it
+        add_auth_method(scores, "GET", api_lambda_integration)
         scores_latest = scores.add_resource("latest")
-        scores_latest.add_method("GET", api_lambda_integration)
+        add_auth_method(scores_latest, "GET", api_lambda_integration)
 
         # GET /metrics
         metrics = api.root.add_resource("metrics")
-        metrics.add_method("GET", api_lambda_integration)
+        add_auth_method(metrics, "GET", api_lambda_integration)
 
-        # GET/PUT /alerts
+        # GET /alerts
+        # PUT /alerts
         # DELETE /alerts/{metric}
         alerts = api.root.add_resource("alerts")
-        alerts.add_method("GET", api_lambda_integration)
-        alerts.add_method("PUT", api_lambda_integration)
+        add_auth_method(alerts, "GET", api_lambda_integration)
+        add_auth_method(alerts, "PUT", api_lambda_integration)
         alert_metric = alerts.add_resource("{metric}")
-        alert_metric.add_method("DELETE", api_lambda_integration)
+        add_auth_method(alert_metric, "DELETE", api_lambda_integration)
 
-        # Add options for CORS (security)
-        for resource in [scores_latest, scores, metrics, alerts, alert_metric]:
-            resource.add_method("OPTIONS", api_lambda_integration)
 
 
         # Ingestion Layer: ECR, ECS Fargate, daily schedule
@@ -226,7 +273,18 @@ class EconSentinelStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
-        vpc = ec2.Vpc.from_lookup(self, "DefaultVpc", is_default=True)
+        vpc = ec2.Vpc(
+            self,
+            "EconSentinelVpc",
+            max_azs=2,
+            nat_gateways=0,
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="Public",
+                    subnet_type=ec2.SubnetType.PUBLIC,
+                )
+            ],
+        )
 
         cluster = ecs.Cluster(
             self,
@@ -325,4 +383,18 @@ class EconSentinelStack(Stack):
             "EcsClusterName",
             value=cluster.cluster_name,
             description="ECS cluster name"
+        )
+
+        CfnOutput(
+            self,
+            "UserPoolId",
+            value=user_pool.user_pool_id,
+            description="Cognito User Pool ID"
+        )
+
+        CfnOutput(
+            self,
+            "UserPoolClientId",
+            value=user_pool_client.user_pool_client_id,
+            description="Cognito User Pool Client ID"
         )

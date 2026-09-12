@@ -22,6 +22,8 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_events as events,
     aws_events_targets as events_targets,
+    aws_cloudfront as cloudfront,
+    aws_cloudfront_origins as cloudfront_origins,
     CfnOutput,
 )
 from constructs import Construct
@@ -341,6 +343,47 @@ class EconSentinelStack(Stack):
         )
 
 
+        # Frontend Hosting:
+        # S3 bucket served locally using CloudFront
+        site_bucket = s3.Bucket(
+            self,
+            "SiteBucket",
+            bucket_name=f"econ-sentinel-site-{self.account}-{self.region}",
+            removal_policy=RemovalPolicy.RETAIN,
+            auto_delete_objects=False,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+        )
+
+        site_distribution = cloudfront.Distribution(
+            self,
+            "SiteDistribution",
+            comment="Econ Sentinel frontend",
+            default_root_object="index.html",
+            default_behavior=cloudfront.BehaviorOptions(
+                origin=cloudfront_origins.S3BucketOrigin.with_origin_access_control(
+                    site_bucket
+                ),
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
+            ),
+            error_responses=[
+                cloudfront.ErrorResponse(
+                    http_status=403,
+                    response_http_status=200,
+                    response_page_path="/index.html",
+                    ttl=Duration.minutes(5),
+                ),
+                cloudfront.ErrorResponse(
+                    http_status=404,
+                    response_http_status=200,
+                    response_page_path="/index.html",
+                    ttl=Duration.minutes(5),
+                ),
+            ],
+        )
+
+
         # Print values to terminal after CDK deploy finishes:
 
         CfnOutput(
@@ -397,4 +440,18 @@ class EconSentinelStack(Stack):
             "UserPoolClientId",
             value=user_pool_client.user_pool_client_id,
             description="Cognito User Pool Client ID"
+        )
+
+        CfnOutput(
+            self,
+            "SiteBucketName",
+            value=site_bucket.bucket_name,
+            description="S3 bucket hosting the built React frontend"
+        )
+
+        CfnOutput(
+            self,
+            "CloudFrontDomainName",
+            value=site_distribution.distribution_domain_name,
+            description="CloudFront domain for the frontend dashboard"
         )

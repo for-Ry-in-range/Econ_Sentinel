@@ -48,10 +48,13 @@ Database Record:
 
 This is where users interact with Econ Sentinel and choose their alert preferences.
 
+The frontend is a React and Vite app,
+hosted on a private S3 bucket.
+
 Website:
-- User authentication system for secure account access
+- User authentication via Amazon Cognito (sign up, email verification, sign in)
 - Dashboard displaying economic status scores for different economic measurements
-- Real-time visualization of the risk scores stored in DynamoDB
+- Real-time visualization of the risk scores stored in DynamoDB (recharts)
 
 User Features:
 - Sign in to account
@@ -67,7 +70,9 @@ User Features:
 - Serverless functions: AWS Lambda
 - Database: AWS DynamoDB
 - Backend language: Python
-- Frontend languages: JavaScript, HTML, CSS
+- Frontend: React + Vite (JavaScript, HTML, CSS)
+- Authentication: Amazon Cognito
+- Hosting: CloudFront
 
 ## Features
 

@@ -1,5 +1,10 @@
+/*
+Manages authentication using Cognito and shares the state globally
+*/
+
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import * as cognito from './cognito.js';
+
 
 const AuthContext = createContext(null);
 

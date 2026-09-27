@@ -95,7 +95,7 @@ export default function AuthForm() {
       <div className="auth-card">
         <h1 className="brand">Econ Sentinel</h1>
         <p className="tagline">Macroeconomic stress monitoring</p>
-
+        {/* only render if user is not in confirmation: */}
         {mode !== MODES.CONFIRM && (
           <div className="auth-tabs">
             <button
@@ -115,6 +115,7 @@ export default function AuthForm() {
           </div>
         )}
 
+        {/*Show component only if value is true*/}
         {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
         {notice && <div className="notice">{notice}</div>}
 

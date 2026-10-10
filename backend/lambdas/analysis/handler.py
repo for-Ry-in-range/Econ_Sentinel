@@ -77,12 +77,7 @@ def lambda_handler(event: Dict[str, Any], context: Any):
             elif 'ports' in parsed_data or 'port' in parsed_data or 'congestion_count' in parsed_data:
                 port_items = data_parser.parse_port_congestion_data(parsed_data)
                 metrics_data.extend(port_items)
-            
-            # Check if it's freight cost index
-            elif 'freight_cost_index' in parsed_data or 'freight_index' in parsed_data:
-                freight_item = data_parser.parse_port_congestion_data(parsed_data)
-                metrics_data.extend(freight_item)
-            
+
             # Last resort
             else:
                 if 'metric' in parsed_data and 'value' in parsed_data:

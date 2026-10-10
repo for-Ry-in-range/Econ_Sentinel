@@ -2,7 +2,7 @@
 Ingestion container entrypoint.
 
 EventBridge triggers this file once a day.
-Fetches economic and freight/port data then uploads raw JSON to S3.
+Fetches economic and port congestion data then uploads raw JSON to S3.
 
 Required env vars:
   RAW_DATA_BUCKET_NAME: S3 bucket for raw data
@@ -44,7 +44,7 @@ def run():
     storage = S3Storage(bucket_name=bucket_name)
 
     fred_client = FREDClient(api_key=fred_api_key)
-    port_client = PortClient(fred_api_key=fred_api_key)
+    port_client = PortClient()
 
     upload_data: list[tuple[dict, str, str]] = []  # set up the types
 
@@ -54,21 +54,12 @@ def run():
         metric_name = result.get("metric_name", result.get("series_id", "unknown"))
         upload_data.append((result, "fred", metric_name))
 
-    # Port and freight data
+    # Port congestion data
     port_results = port_client.fetch_all()
-    logger.info("Fetched %d port/freight payloads", len(port_results))
+    logger.info("Fetched %d port payloads", len(port_results))
 
     for result in port_results:
-        # Get metric label from the payload
-        if "ports" in result:
-            metric_name = "port_congestion"
-        elif "freight_cost_index" in result:
-            metric_name = "freight_cost_index"
-        elif "freight_cost_trucking" in result:
-            metric_name = "freight_cost_trucking"
-        else:
-            metric_name = "port_data"
-        upload_data.append((result, "port", metric_name))
+        upload_data.append((result, "port", "port_congestion"))
 
     # Upload everything to S3
     uploaded_keys = storage.upload_many(upload_data)

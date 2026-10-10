@@ -1,15 +1,23 @@
 {
   "examples": {
-    "fred_inflation": {
-      "series_id": "CPIAUCSL",
+    "fred_jobless_claims": {
+      "series_id": "ICSA",
+      "metric_name": "initial_jobless_claims",
       "data": [
-        {"date": "2026-02-11", "value": "308.234"}
+        {"date": "2026-02-07", "value": "224000"}
+      ]
+    },
+    "fred_yield_curve": {
+      "series_id": "T10Y2Y",
+      "metric_name": "yield_curve_10y2y",
+      "data": [
+        {"date": "2026-02-11", "value": "0.42"}
       ]
     },
     "fred_simplified": {
-      "metric": "inflation_rate_cpi",
-      "value": 4.8,
-      "date": "2026-02-11",
+      "metric": "initial_jobless_claims",
+      "value": 224000,
+      "date": "2026-02-07",
       "source": "fred"
     },
     "port_congestion_multiple": {
@@ -24,15 +32,11 @@
       "congestion_count": 42,
       "date": "2026-02-11"
     },
-    "freight_cost_index": {
-      "freight_cost_index": 168.5,
-      "date": "2026-02-11"
-    },
     "generic_metric": {
-      "metric": "freight_cost_index",
-      "value": 145.3,
+      "metric": "yield_curve_10y2y",
+      "value": 0.42,
       "timestamp": "2026-02-11T00:00:00Z",
-      "source": "freight"
+      "source": "fred"
     }
   }
 }

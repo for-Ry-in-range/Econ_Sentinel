@@ -3,14 +3,8 @@ Config for ingestion
 """
 
 FRED_SERIES = {
-    "inflation_rate_cpi": "CPIAUCSL",  # CPI: Urban Consumers
-    "ppi_all_commodities": "PPIACO",  # PPI: All Commodities
-    "unemployment_rate": "UNRATE",  # Unemployment Rate
-}
-
-FREIGHT_FRED_SERIES = {
-    "freight_cost_index": "WPU3012",  # PPI: Freight Transportation
-    "freight_cost_trucking": "PCU4841484148",  # PPI: Trucking
+    "initial_jobless_claims": "ICSA",  # Initial Jobless Claims (weekly)
+    "yield_curve_10y2y": "T10Y2Y",  # 10-Year minus 2-Year Treasury Yield Spread (daily)
 }
 
 MAJOR_PORTS = ["los_angeles", "long_beach", "new_york", "savannah"]

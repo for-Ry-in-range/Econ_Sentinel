@@ -23,7 +23,7 @@ class DataParser:
             if 'data' in data and isinstance(data['data'], list) and len(data['data']) > 0:
                 latest = data['data'][-1]
                 return {
-                    'metric': data.get('series_id', 'inflation_rate_cpi'),
+                    'metric': data.get('metric_name') or data.get('series_id', 'unknown'),
                     'value': float(latest.get('value', 0)),
                     'timestamp': latest.get('date', ''),
                     'source': 'fred'
@@ -78,17 +78,7 @@ class DataParser:
                     'source': 'port_congestion',
                     'port': port_name
                 })
-            
-            # Freight cost index format
-            elif 'freight_cost_index' in data or 'freight_index' in data:
-                value = data.get('freight_cost_index') or data.get('freight_index')
-                results.append({
-                    'metric': 'freight_cost_index',
-                    'value': float(value),
-                    'timestamp': data.get('date', data.get('timestamp', '')),
-                    'source': 'freight'
-                })
-            
+
             return results
 
         except (ValueError, KeyError, TypeError) as e:

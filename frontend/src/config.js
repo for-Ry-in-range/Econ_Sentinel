@@ -25,30 +25,15 @@ export function isConfigured() {
  * Unknown metrics fall back to a title-cased key via metricLabel().
  */
 export const METRIC_META = {
-  inflation_rate_cpi: {
-    label: 'Inflation (CPI)',
-    description: 'Consumer Price Index for All Urban Consumers',
-    unit: 'index',
+  initial_jobless_claims: {
+    label: 'Initial Jobless Claims',
+    description: 'Weekly U.S. initial unemployment insurance claims',
+    unit: 'claims',
   },
-  ppi_all_commodities: {
-    label: 'Producer Prices (PPI)',
-    description: 'Producer Price Index, All Commodities',
-    unit: 'index',
-  },
-  unemployment_rate: {
-    label: 'Unemployment Rate',
-    description: 'U.S. civilian unemployment rate',
-    unit: '%',
-  },
-  freight_cost_index: {
-    label: 'Freight Cost Index',
-    description: 'PPI: Freight Transportation',
-    unit: 'index',
-  },
-  freight_cost_trucking: {
-    label: 'Trucking Cost',
-    description: 'PPI: General Freight Trucking',
-    unit: 'index',
+  yield_curve_10y2y: {
+    label: '10Y-2Y Yield Spread',
+    description: '10-Year minus 2-Year Treasury yield spread (negative = inverted curve)',
+    unit: 'pts',
   },
   port_la_vessel_queue: {
     label: 'Port of LA Vessel Queue',

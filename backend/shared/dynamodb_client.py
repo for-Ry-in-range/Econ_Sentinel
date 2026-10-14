@@ -35,7 +35,7 @@ class DynamoDBClient:
         """
         Save a risk score to DynamoDB
         Args:
-            metric: Metric name (ex: 'freight_cost_index')
+            metric: Metric name (ex: 'initial_jobless_claims')
             timestamp: timestamp string
             value: value today
             moving_avg_30d: 30 day moving average

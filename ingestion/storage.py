@@ -23,7 +23,7 @@ class S3Storage:
     def _build_key(self, source: str, metric: str, run_date: date) -> str:
         """
         Make S3 key (unique name in S3) based on date.
-        Example: fred/2024/01/15/inflation_rate_cpi_a3f2.json
+        Example: fred/2024/01/15/initial_jobless_claims_a3f2.json
         """
         short_id = uuid.uuid4().hex[:8]  # random unique ID
         return (
@@ -39,7 +39,7 @@ class S3Storage:
         Args:
             payload:   Dict to upload
             source:    e.g. "fred" or "port"
-            metric:    e.g. "inflation_rate_cpi"
+            metric:    e.g. "initial_jobless_claims"
             run_date:  Date used for partitioning
 
         Returns:

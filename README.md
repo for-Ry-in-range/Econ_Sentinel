@@ -19,8 +19,8 @@ The Tech:
 - Ran with AWS ECS (Fargate) once every day
 
 Data Sources:
-- FRED API (Federal Reserve) for inflation data
-- Port congestion data at major US hubs
+- FRED API (Federal Reserve) for initial jobless claims and the 10Y-2Y Treasury yield spread
+- Port of Los Angeles vessel-queue congestion data
 
 ### 2. Storage and Data Lake (AWS S3)
 
@@ -58,7 +58,7 @@ Website:
 
 User Features:
 - Sign in to account
-- View current economic status scores (e.g., freight cost index, port congestion, inflation)
+- View current economic status scores (e.g., initial jobless claims, the yield curve spread, port congestion)
 - Choose email alert preferences and thresholds
 
 ## Tech Stack

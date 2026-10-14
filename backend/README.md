@@ -87,7 +87,7 @@ cdk deploy
 - `PUT /alerts` - Create/update alert rule (requires `x-user-id` header)
   ```json
   {
-    "metric": "freight_cost_index",
+    "metric": "initial_jobless_claims",
     "threshold": 15.0,
     "enabled": true
   }
@@ -147,7 +147,7 @@ from lambdas.api.handler import lambda_handler
 event = {
     "httpMethod": "GET",
     "path": "/scores/latest",
-    "queryStringParameters": {"metric": "freight_cost_index"},
+    "queryStringParameters": {"metric": "initial_jobless_claims"},
     "headers": {}
 }
 lambda_handler(event, None)

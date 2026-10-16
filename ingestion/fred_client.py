@@ -1,5 +1,5 @@
 """
-Fetches latest FRED data for each series
+Fetches FRED data
 """
 
 import logging
@@ -58,6 +58,61 @@ class FREDClient:
         except requests.RequestException as e:
             logger.error("Failed to fetch FRED series %s: %s", series_id, e)
             return None
+
+    def fetch_series_range(self, series_id: str, start: date, end: date):
+        """
+        Fetch every row for a FRED series in the range, oldest to latest
+        """
+        params = {
+            "series_id": series_id,
+            "api_key": self.api_key,
+            "file_type": "json",
+            "sort_order": "asc",
+            "observation_start": start.isoformat(),
+            "observation_end": end.isoformat(),
+        }
+
+        try:
+            response = self.session.get(FRED_BASE_URL, params=params, timeout=30)
+            response.raise_for_status()
+            observations = response.json().get("observations", [])
+        except requests.RequestException as e:
+            logger.error("Failed to fetch FRED series %s range: %s", series_id, e)
+            return None
+
+        # Note: FRED uses "." for missing values
+        data = []
+        for obs in observations:
+            if obs.get("value") != ".":
+                data.append({"date": obs["date"], "value": obs["value"]})
+
+        skipped = len(observations) - len(data)
+        if skipped:
+            logger.warning("Dropped %d missing values for series %s", skipped, series_id)
+
+        if not data:
+            logger.warning("No observations returned for series %s between %s and %s", series_id, start, end)
+            return None
+
+        return {
+            "series_id": series_id,
+            "data": data,
+        }
+
+    def fetch_all_range(self, start: date, end: date) -> list[dict]:
+        """
+        Return the full history between start and end for all FRED series in config
+        """
+        results = []
+        for metric_name, series_id in FRED_SERIES.items():
+            data = self.fetch_series_range(series_id, start, end)
+            if data:
+                data["metric_name"] = metric_name
+                results.append(data)
+                logger.info("Fetched %d observations of FRED series %s (%s)", len(data["data"]), series_id, metric_name)
+            else:
+                logger.warning("Skipping FRED series %s (%s)", series_id, metric_name)
+        return results
 
     def fetch_all(self) -> list[dict]:
         """

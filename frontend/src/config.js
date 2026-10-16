@@ -57,11 +57,14 @@ export function metricDescription(metric) {
 /**
  * Severity → presentation, aligned with backend RiskCalculator thresholds:
  * normal (<5%), warning (5-15%), critical (>15%).
+ * insufficient_data means fewer than 3 earlier points in the 30-day window,
+ * so the score has no risk_score or pct_change.
  */
 export const SEVERITY_META = {
   normal: { label: 'Normal', color: '#2e7d32', bg: '#e8f5e9' },
   warning: { label: 'Warning', color: '#b26a00', bg: '#fff4e0' },
   critical: { label: 'Critical', color: '#c62828', bg: '#fdecea' },
+  insufficient_data: { label: 'Not enough history', color: '#5f6b7a', bg: '#eef1f5' },
 };
 
 export function severityMeta(severity) {

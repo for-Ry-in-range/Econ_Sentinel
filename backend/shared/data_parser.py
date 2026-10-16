@@ -13,35 +13,46 @@ class DataParser:
     def parse_fred_data(data: Dict[str, Any]):
         """
         Parse FRED API data.
+        Daily files hold one observation; backfill files hold a whole history.
         Args:
             data: Raw FRED JSON
         Returns:
-            Parsed data dict with metric, value, timestamp, or None if invalid
+            List of parsed data dicts with metric, value, timestamp, oldest first
         """
         try:
             # FRED format with series data
-            if 'data' in data and isinstance(data['data'], list) and len(data['data']) > 0:
-                latest = data['data'][-1]
-                return {
-                    'metric': data.get('metric_name') or data.get('series_id', 'unknown'),
-                    'value': float(latest.get('value', 0)),
-                    'timestamp': latest.get('date', ''),
-                    'source': 'fred'
-                }
+            if 'data' in data and isinstance(data['data'], list):
+                metric = data.get('metric_name') or data.get('series_id', 'unknown')
+                results = []
+                for observation in data['data']:
+                    # Skip bad points one at a time, so one doesn't sink a whole backfill
+                    try:
+                        results.append({
+                            'metric': metric,
+                            'value': float(observation['value']),
+                            'timestamp': observation.get('date', ''),
+                            'source': 'fred'
+                        })
+                    except (ValueError, KeyError, TypeError) as e:
+                        print(f"Skipping bad FRED observation {observation}: {e}")
+                # Oldest first, since each score depends on the ones before it
+                results.sort(key=lambda r: r['timestamp'])
+                return results
+
             # FRED simplified format
             if 'value' in data and 'metric' in data:
-                return {
+                return [{
                     'metric': data['metric'],
                     'value': float(data['value']),
                     'timestamp': data.get('date', data.get('timestamp', '')),
                     'source': 'fred'
-                }
+                }]
 
-            return None
+            return []
 
         except (ValueError, KeyError, TypeError) as e:
             print(f"Error parsing FRED data: {e}")
-            return None
+            return []
     
     @staticmethod
     def parse_port_congestion_data(data: Dict[str, Any]):

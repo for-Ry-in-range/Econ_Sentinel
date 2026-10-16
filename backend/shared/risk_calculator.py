@@ -3,24 +3,28 @@ Calculates risk scores and severity levels based on the percent
 change in the 30-day moving average.
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from enum import Enum
 
 
 class Severity(str, Enum):
-    """3 risk severity levels"""
+    """3 risk severity levels, plus one for when there isn't enough history to judge"""
     NORMAL = "normal"
     WARNING = "warning"
     CRITICAL = "critical"
+    INSUFFICIENT_DATA = "insufficient_data"
 
 
 class RiskCalculator:
     """Calculates risk scores and severity based on percent change"""
-    
+
     NORMAL_THRESHOLD = 5.0  # < 5% change
     WARNING_THRESHOLD = 15.0  # 5% to 15% change
     # Critical is > 15% change
-    
+
+    # Fewer earlier data points than this in the window and the average means nothing
+    MIN_BASELINE_POINTS = 3
+
     @staticmethod
     def calculate_percent_change(current_value: float, moving_avg: float):
         """
@@ -99,3 +103,27 @@ class RiskCalculator:
             "risk_score": risk_score,
             "severity": severity.value
         }
+
+    @staticmethod
+    def assess(current_value: float, baseline_values: List[float]) -> Dict[str, any]:
+        """
+        Create complete risk assessment from the earlier values in the moving average window.
+        Args:
+            current_value: Current data point value
+            baseline_values: Values from the window before this data point
+        Returns:
+            Dict of moving_avg, pct_change, risk_score, severity.
+            With too little history, pct_change and risk_score are None
+            and severity is insufficient_data.
+        """
+        moving_avg = sum(baseline_values) / len(baseline_values) if baseline_values else None
+
+        if len(baseline_values) < RiskCalculator.MIN_BASELINE_POINTS:
+            return {
+                "moving_avg": moving_avg,
+                "pct_change": None,
+                "risk_score": None,
+                "severity": Severity.INSUFFICIENT_DATA.value
+            }
+
+        return {"moving_avg": moving_avg, **RiskCalculator.calculate_risk(current_value, moving_avg)}

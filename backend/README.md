@@ -73,6 +73,25 @@ cdk deploy
 
 3. Note the API endpoint URL from the stack outputs.
 
+4. Backfill history (once, after the first deploy and after pushing the ingestion image).
+   Without this, every metric shows "Not enough history" until the daily job has built up
+   enough points. The backfill fetches 400 days of FRED history and never sends alert emails.
+   Don't run it around 06:00 UTC, when the daily job runs.
+```bash
+TASK_DEF=$(aws ecs list-task-definitions --family-prefix EconSentinelBackendIngestionTaskDef \
+  --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)
+SUBNET=$(aws ec2 describe-subnets --filters "Name=tag:aws-cdk:subnet-name,Values=Public" \
+  "Name=tag:aws:cloudformation:stack-name,Values=EconSentinelBackend" \
+  --query 'Subnets[0].SubnetId' --output text)
+
+aws ecs run-task --cluster econ-sentinel --launch-type FARGATE --task-definition "$TASK_DEF" \
+  --network-configuration "awsvpcConfiguration={subnets=[$SUBNET],assignPublicIp=ENABLED}" \
+  --overrides '{"containerOverrides":[{"name":"IngestionContainer","command":["-m","ingestion.backfill","--days","400"]}]}'
+```
+   It writes one file per series under `backfill/fred/`, so the analysis Lambda scores each
+   series oldest first. It's safe to run again: rows are keyed by (metric, observation date)
+   and get overwritten with the same scores. Port of LA data has no history to backfill.
+
 ## API Endpoints
 
 ### Dashboard Endpoints
@@ -96,11 +115,23 @@ cdk deploy
 
 ## Risk Calculation
 
-Risk scores are calculated based on percent change from 30-day moving average:
+Risk scores are calculated based on percent change from the average of the 30 days before
+each observation (not the 30 days before today, so historical observations are scored
+against their own history):
 
 - **Normal**: < 5% change (risk score: 0-30)
 - **Warning**: 5% to 15% change (risk score: 31-70)
 - **Critical**: > 15% change (risk score: 71-100)
+- **Insufficient data**: fewer than 3 earlier points in the window. No risk score or percent change is stored.
+
+Each observation is scored once. When the daily job fetches a value that's already saved
+(a weekly series is fetched about 5 times), it's skipped. If FRED revises the value, it's
+rescored without alerting again.
+
+Alert emails are only sent for warning/critical scores, and never for:
+- files from the backfill (`"backfill": true` in the payload)
+- revised values of an observation that was already scored
+- observations older than 10 days (`ALERT_MAX_AGE_DAYS` in the analysis handler)
 
 ## Environment Variables
 
@@ -119,6 +150,14 @@ The code is structured to support authentication later. To add Cognito:
 3. Update API Lambda to extract `user_id` from JWT claims in `requestContext.authorizer.claims.sub`
 
 ## Development
+
+### Unit Tests
+
+```bash
+pip install -r requirements-dev.txt     # from the repo root
+cd backend && python -m pytest tests    # backend
+cd .. && python -m pytest ingestion/tests   # ingestion, from the repo root
+```
 
 ### Local Testing
 

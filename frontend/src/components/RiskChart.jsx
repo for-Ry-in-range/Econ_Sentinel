@@ -23,7 +23,8 @@ export default function RiskChart({ metric, scores }) {
       .map((s) => ({
         date: String(s.timestamp).slice(0, 10),
         value: Number(s.value),
-        risk_score: Number(s.risk_score),
+        // Missing for "insufficient_data" points; null leaves a gap instead of plotting 0
+        risk_score: s.risk_score == null ? null : Number(s.risk_score),
       }));
   }, [scores]);
 

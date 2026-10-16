@@ -26,21 +26,22 @@ class DynamoDBClient:
         metric: str,
         timestamp: str,
         value: float,
-        moving_avg_30d: float,
-        pct_change: float,
-        risk_score: int,
+        moving_avg_30d: Optional[float],
+        pct_change: Optional[float],
+        risk_score: Optional[int],
         severity: str,
         source_object_key: str
     ):
         """
-        Save a risk score to DynamoDB
+        Save a risk score to DynamoDB.
+        Keyed on (metric, observation timestamp), so saving the same observation again overwrites it.
         Args:
             metric: Metric name (ex: 'initial_jobless_claims')
-            timestamp: timestamp string
-            value: value today
-            moving_avg_30d: 30 day moving average
-            pct_change: percent change from the avg
-            risk_score: Risk score
+            timestamp: observation timestamp string
+            value: observed value
+            moving_avg_30d: 30 day moving average (None if no earlier data)
+            pct_change: percent change from the avg (None if insufficient data)
+            risk_score: Risk score (None if insufficient data)
             severity: Severity level
             source_object_key: key of the S3 object that was scored
         """
@@ -48,13 +49,34 @@ class DynamoDBClient:
             'metric': metric,
             'timestamp': timestamp,
             'value': Decimal(str(value)),
-            'moving_avg_30d': Decimal(str(moving_avg_30d)),
-            'pct_change': Decimal(str(pct_change)),
-            'risk_score': risk_score,
             'severity': severity,
             'source_object_key': source_object_key
         }
+        # Leave out the scores that couldn't be calculated
+        if moving_avg_30d is not None:
+            item['moving_avg_30d'] = Decimal(str(moving_avg_30d))
+        if pct_change is not None:
+            item['pct_change'] = Decimal(str(pct_change))
+        if risk_score is not None:
+            item['risk_score'] = risk_score
         self.risk_scores_table.put_item(Item=item)
+
+    def get_score(self, metric: str, timestamp: str):
+        """
+        Get the risk score saved for one observation
+        Args:
+            metric: Metric name
+            timestamp: observation timestamp string
+        Returns:
+            Risk score item or None
+        """
+        response = self.risk_scores_table.get_item(
+            Key={'metric': metric, 'timestamp': timestamp}
+        )
+        item = response.get('Item')
+        if item:
+            return self._convert_decimal_to_float(item)
+        return None
     
     def get_latest_score(self, metric: str):
         """
@@ -105,39 +127,38 @@ class DynamoDBClient:
         items = response.get('Items', [])
         return [self._convert_decimal_to_float(item) for item in items]
 
-    def get_recent_scores_for_average(self, metric: str, days: int = 30):
+    def get_values_before(self, metric: str, as_of: str, days: int = 30):
         """
-        Get recent scores for calculating moving average
+        Get the values in the moving average window before an observation.
+        The window is the `days` days before as_of, NOT before today, so that
+        historical observations are scored against their own history.
+        The observation at as_of itself is left out.
         Args:
             metric: Metric name
+            as_of: Observation timestamp (ISO 8601)
             days: Number of days to look back
         Returns:
-            List of recent risk score items
+            List of values, oldest first
         """
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=days)
-        start_iso = start_date.strftime('%Y-%m-%dT00:00:00Z')
-        end_iso = end_date.strftime('%Y-%m-%dT23:59:59Z')
-        return self.get_scores_time_series(metric, start_iso, end_iso, limit=1000)
+        as_of_dt = datetime.fromisoformat(as_of.replace('Z', '+00:00'))
+        start_iso = (as_of_dt - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-    def calculate_moving_average(self, metric: str, days: int = 30):
-        """
-        Calculate moving average from recent scores
-        Args:
-            metric: Metric name
-            days: Number of days for moving average
-        Returns:
-            Moving average value or None if not enough data
-        """
-        recent_scores = self.get_recent_scores_for_average(metric, days)
+        query_args = {
+            'KeyConditionExpression': Key('metric').eq(metric) &
+                                      Key('timestamp').between(start_iso, as_of),
+            'ScanIndexForward': True,
+        }
+        response = self.risk_scores_table.query(**query_args)
+        items = response.get('Items', [])
+        while 'LastEvaluatedKey' in response:
+            response = self.risk_scores_table.query(
+                ExclusiveStartKey=response['LastEvaluatedKey'],
+                **query_args
+            )
+            items.extend(response.get('Items', []))
 
-        if not recent_scores:
-            return None
-
-        values = [float(score['value']) for score in recent_scores]
-        if values:
-            return sum(values) / len(values)
-        return None
+        # between is inclusive, so drop the observation itself
+        return [float(item['value']) for item in items if item['timestamp'] != as_of]
 
     def get_all_metrics(self):
         """

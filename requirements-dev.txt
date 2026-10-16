@@ -1,0 +1,3 @@
+-r ingestion/requirements.txt
+-r backend/requirements.txt
+pytest>=8.0

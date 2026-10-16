@@ -1,25 +1,11 @@
 """
-One-shot historical backfill.
+One time historical backfill
 
-Run once after a fresh deploy so the 30-day moving averages have real history
-instead of starting from nothing:
+Run once after deploy: python -m ingestion.backfill --days 400
 
-  python -m ingestion.backfill --days 400
-
-Writes ONE S3 file per FRED series containing the full history, under
-backfill/fred/YYYY/MM/DD/. Each file triggers one analysis Lambda run, which
-scores the observations oldest first. One file per series (instead of one
-file per day) keeps the scoring in order, since day N's moving average
-depends on the days before it already being saved.
-
-Every payload is marked "backfill": true so the analysis Lambda never sends
-alert emails for it.
-
-Port of LA data is not backfilled: the RSS feed only has the current value.
-
-Required env vars:
-  RAW_DATA_BUCKET_NAME: S3 bucket for raw data
-  FRED_API_KEY: FRED API key
+Writes 1 S3 file per FRED series containing the full history. The payloads are marked
+as backfill so the analysis Lambda doesn't send alert emails for it. Port of LA is
+not backfilled because the RSS feed only has the current value.
 """
 
 import argparse
@@ -38,7 +24,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
+# Get the amount of days to backfill
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Backfill historical FRED data into S3")
     parser.add_argument(
@@ -82,7 +68,7 @@ def run(argv=None):
         upload_data.append((result, "backfill/fred", metric_name))
 
     if not upload_data:
-        logger.error("Nothing fetched, so nothing to backfill")
+        logger.error("Nothing fetched so there is nothing to backfill")
         sys.exit(1)
 
     uploaded_keys = storage.upload_many(upload_data)

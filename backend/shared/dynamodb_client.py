@@ -1,5 +1,6 @@
 """
-DynamoDB utilities
+DynamoDB utilities.
+Does all the talking with DynamoDB
 """
 
 import os

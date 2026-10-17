@@ -1,5 +1,5 @@
 """
-Shared utilities for parsing raw data from the ingestion layer.
+Shared utilities for parsing raw JSON data from S3
 """
 
 import json

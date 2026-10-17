@@ -74,9 +74,8 @@ cdk deploy
 3. Note the API endpoint URL from the stack outputs.
 
 4. Backfill history (once, after the first deploy and after pushing the ingestion image).
-   Without this, every metric shows "Not enough history" until the daily job has built up
+   Before the backfill, every metric shows "Not enough history" until the daily job has built up
    enough points. The backfill fetches 400 days of FRED history and never sends alert emails.
-   Don't run it around 06:00 UTC, when the daily job runs.
 ```bash
 TASK_DEF=$(aws ecs list-task-definitions --family-prefix EconSentinelBackendIngestionTaskDef \
   --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)

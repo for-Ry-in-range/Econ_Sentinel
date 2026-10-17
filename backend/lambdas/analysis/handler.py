@@ -1,5 +1,5 @@
 """
-Triggered by S3 events
+Triggered by a data file being uploaded to S3
 
 Processes the data files uploaded to S3.
 Calculates risk scores and saves them to DynamoDB.
@@ -26,8 +26,7 @@ risk_calculator = RiskCalculator()
 
 SENDER_EMAIL = os.environ.get('SES_SENDER_EMAIL', '')  # the 'from'
 
-# Never alert on observations older than this. ICSA is published about 5 days
-# after the week it covers, so 10 days leaves room for the normal delay.
+# Never alert on observations older than this
 ALERT_MAX_AGE_DAYS = 10
 
 
@@ -149,6 +148,7 @@ def process_metric(metric: str, value: float, timestamp: str, source_object_key:
     if not normalized_timestamp:
         normalized_timestamp = datetime.utcnow().isoformat() + 'Z'
 
+    # If there's already a score for this metric on a specific date
     existing = dynamodb_client.get_score(metric, normalized_timestamp)
 
     # The daily job re-fetches the latest value of a weekly series about 5 times.
@@ -160,6 +160,8 @@ def process_metric(metric: str, value: float, timestamp: str, source_object_key:
 
     # Values from the 30 days before this observation
     baseline_values = dynamodb_client.get_values_before(metric, normalized_timestamp, days=30)
+
+    # Risk score
     risk_assessment = risk_calculator.assess(value, baseline_values)
 
     # Save to DynamoDB

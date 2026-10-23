@@ -214,6 +214,7 @@ def should_send_alerts(metric: str, timestamp: str, backfill: bool, is_revision:
     return True
 
 
+# Only allow recent data to trigger alerts
 def is_recent_observation(timestamp: str) -> bool:
     """True if the observation is within ALERT_MAX_AGE_DAYS. Unreadable timestamps count as old."""
     try:

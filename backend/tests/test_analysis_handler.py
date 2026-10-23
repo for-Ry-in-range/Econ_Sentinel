@@ -9,7 +9,7 @@ from lambdas.analysis import handler
 
 
 class FakeDB:
-    """In-memory stand-in for DynamoDBClient's risk score methods"""
+    """In-memory fake representation of DynamoDB database, and its methods"""
 
     def __init__(self):
         self.rows = {}
@@ -32,13 +32,17 @@ class FakeDB:
         self.rows[(item['metric'], item['timestamp'])] = item
 
 
+# Fixture: runs first (when it's in the parameter of the test) to setup before the test runs
+
 @pytest.fixture
 def db():
     fake = FakeDB()
+    # Temporarily put the fake DB in place of the real
     with patch.object(handler, 'dynamodb_client', fake):
         yield fake
 
 
+# Replicate being able to check alerts that are triggered
 @pytest.fixture
 def alerts():
     with patch.object(handler, 'trigger_alerts') as mock:
@@ -46,7 +50,7 @@ def alerts():
 
 
 def days_ago(n):
-    # UTC, to match the handler's age check
+    """Return the date n days before today"""
     return (datetime.now(timezone.utc).date() - timedelta(days=n)).isoformat()
 
 
@@ -54,10 +58,9 @@ def ts(n):
     return f"{days_ago(n)}T00:00:00Z"
 
 
-def s3_event(payload):
-    """Run the handler on one S3 file containing payload"""
+def s3_event(payload):  # payload: dict representing the S3 contents
     s3 = MagicMock()
-    s3.get_object.return_value = {
+    s3.get_object.return_value = {  # What to return when get_object is called
         'ContentType': 'application/json',
         'Body': io.BytesIO(json.dumps(payload).encode('utf-8')),
     }
@@ -67,7 +70,7 @@ def s3_event(payload):
 
 
 def weekly_payload(values, backfill):
-    """Weekly observations, the last one dated today"""
+    """Create the dict payload for s3_event, using the values list"""
     count = len(values)
     payload = {
         'series_id': 'ICSA',
@@ -85,6 +88,7 @@ def test_backfill_scores_in_order_and_never_alerts(db, alerts):
 
     assert result['processed_count'] == 6
     assert result['errors'] == []
+    # One week apart:
     rows = [db.rows[('initial_jobless_claims', ts(7 * k))] for k in range(5, -1, -1)]
     assert [r['severity'] for r in rows[:3]] == ['insufficient_data'] * 3
     assert rows[3]['severity'] == 'normal'
@@ -97,7 +101,6 @@ def test_backfill_flag_must_be_true_not_just_present(db, alerts):
     payload = weekly_payload([100, 100, 100, 100, 130], backfill=False)
     payload['backfill'] = 'no'
     s3_event(payload)
-    # The critical point is 0 days old, so with no real backfill flag it alerts
     alerts.assert_called_once()
 
 
@@ -108,6 +111,8 @@ def test_backfill_rescores_rows_the_daily_job_already_wrote(db, alerts):
     s3_event(weekly_payload([100, 100, 100, 100, 130], backfill=True))
 
     assert db.rows[('initial_jobless_claims', ts(0))]['severity'] == 'critical'
+
+    # Alert shouldn't be triggered
     alerts.assert_not_called()
 
 

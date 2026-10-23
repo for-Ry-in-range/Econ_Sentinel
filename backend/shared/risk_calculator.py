@@ -108,13 +108,6 @@ class RiskCalculator:
     def assess(current_value: float, baseline_values: List[float]) -> Dict[str, any]:
         """
         Create complete risk assessment from the earlier values in the moving average window.
-        Args:
-            current_value: Current data point value
-            baseline_values: Values from the window before this data point
-        Returns:
-            Dict of moving_avg, pct_change, risk_score, severity.
-            With too little history, pct_change and risk_score are None
-            and severity is insufficient_data.
         """
         moving_avg = sum(baseline_values) / len(baseline_values) if baseline_values else None
 

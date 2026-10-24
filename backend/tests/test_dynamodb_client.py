@@ -12,8 +12,9 @@ def make_client():
 
 
 def test_get_values_before_uses_window_before_the_observation_not_today():
+    """Test calculating the moving average for earlier observations (during backfill)"""
     client = make_client()
-    as_of = '2025-09-15T00:00:00Z'
+    as_of = '2025-09-15T00:00:00Z' # Looking for the 30 days leading up to this day
     client.risk_scores_table.query.return_value = {'Items': [
         {'metric': 'm', 'timestamp': '2025-08-20T00:00:00Z', 'value': Decimal('1')},
         {'metric': 'm', 'timestamp': '2025-09-01T00:00:00Z', 'value': Decimal('2')},
@@ -36,10 +37,11 @@ def test_get_values_before_follows_pagination():
     client = make_client()
     client.risk_scores_table.query.side_effect = [
         {'Items': [{'timestamp': '2025-09-01T00:00:00Z', 'value': Decimal('1')}],
-         'LastEvaluatedKey': {'k': 1}},
+         'LastEvaluatedKey': {'k': 1}}, # LastEvaluatedKey is how DynamoDB marks the end of a pagination
         {'Items': [{'timestamp': '2025-09-02T00:00:00Z', 'value': Decimal('2')}]},
     ]
     assert client.get_values_before('m', '2025-09-15T00:00:00Z') == [1.0, 2.0]
+    # ExclusiveStartKey: start after this key (dynamoDB feature)
     assert client.risk_scores_table.query.call_args.kwargs['ExclusiveStartKey'] == {'k': 1}
 
 

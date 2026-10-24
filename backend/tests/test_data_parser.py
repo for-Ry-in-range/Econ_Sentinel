@@ -34,12 +34,19 @@ def test_parse_fred_data_skips_bad_points_but_keeps_the_rest():
 
 
 def test_parse_fred_data_single_daily_observation():
-    payload = {'series_id': 'ICSA', 'metric_name': 'initial_jobless_claims',
-               'data': [{'date': '2026-01-10', 'value': '220000'}]}
+    payload = {
+        'series_id': 'ICSA',
+        'metric_name': 'initial_jobless_claims',
+        'data': [{
+            'date': '2026-01-10', 
+            'value': '220000'
+        }]
+    }
     assert len(DataParser.parse_fred_data(payload)) == 1
 
 
 def test_parse_fred_data_simplified_format():
+    """Data var is not in a dict"""
     payload = {'metric': 'initial_jobless_claims', 'value': 220000, 'date': '2026-01-10', 'source': 'fred'}
     results = DataParser.parse_fred_data(payload)
     assert results == [{'metric': 'initial_jobless_claims', 'value': 220000.0,

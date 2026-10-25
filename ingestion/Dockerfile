@@ -13,6 +13,10 @@ COPY . .
 RUN useradd -m app && chown -R app:app /app
 USER app
 
-# Daily job runs by default
+
+# In ECS, ENTRYPOINT can't be overriden but CMD can
+# Run backfill: ["-m", "ingestion.backfill", "--days", "400"]
 ENTRYPOINT ["python"]
+# Default daily ingestion
 CMD ["-m", "ingestion.main"]
+

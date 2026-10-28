@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from .fred_client import FREDClient
 from .storage import S3Storage
 
+# Python's more detailed printing
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",

@@ -162,7 +162,7 @@ def process_metric(metric: str, value: float, timestamp: str, source_object_key:
     baseline_values = dynamodb_client.get_values_before(metric, normalized_timestamp, days=30)
 
     # Risk score
-    risk_assessment = risk_calculator.assess(value, baseline_values)
+    risk_assessment = risk_calculator.assess(value, baseline_values, metric=metric)
 
     # Save to DynamoDB
     dynamodb_client.save_risk_score(

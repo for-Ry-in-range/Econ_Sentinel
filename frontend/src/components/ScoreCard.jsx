@@ -1,4 +1,4 @@
-import { metricLabel, metricDescription, severityMeta } from '../config.js';
+import { metricLabel, metricDescription, severityMeta, isLevelBased } from '../config.js';
 
 function formatNumber(n) {
   if (n === null || n === undefined || Number.isNaN(Number(n))) return '—';
@@ -13,12 +13,25 @@ function formatPct(n) {
   return `${sign}${num.toFixed(2)}%`;
 }
 
+function formatPts(n) {
+  if (n === null || n === undefined || Number.isNaN(Number(n))) return '—';
+  const num = Number(n);
+  const sign = num > 0 ? '+' : '';
+  return `${sign}${num.toFixed(2)} pts`;
+}
+
 
 // One metric tile card
 
 export default function ScoreCard({ metric, score, selected, onSelect }) {
   const sev = severityMeta(score?.severity);
   const hasData = Boolean(score);
+  const levelBased = isLevelBased(metric);
+
+  const avgDiff =
+    hasData && score.moving_avg_30d !== undefined && score.moving_avg_30d !== null
+      ? Number(score.value) - Number(score.moving_avg_30d)
+      : null;
 
   return (
     <button
@@ -49,7 +62,7 @@ export default function ScoreCard({ metric, score, selected, onSelect }) {
           </div>
           <div className="stat">
             <span className="stat-value" style={{ color: sev.color }}>
-              {formatPct(score.pct_change)}
+              {levelBased ? formatPts(avgDiff) : formatPct(score.pct_change)}
             </span>
             <span className="stat-label">vs 30d avg</span>
           </div>

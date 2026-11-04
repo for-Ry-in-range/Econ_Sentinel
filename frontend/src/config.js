@@ -34,6 +34,7 @@ export const METRIC_META = {
     label: '10Y-2Y Yield Spread',
     description: '10-Year minus 2-Year Treasury yield spread (negative = inverted curve)',
     unit: 'pts',
+    levelBased: true, // scored on the spread's value, not percent change
   },
   port_la_vessel_queue: {
     label: 'Port of LA Vessel Queue',
@@ -52,6 +53,11 @@ export function metricLabel(metric) {
 
 export function metricDescription(metric) {
   return METRIC_META[metric]?.description || '';
+}
+
+/** Returns true for metrics scored on value instead of percent change **/
+export function isLevelBased(metric) {
+  return Boolean(METRIC_META[metric]?.levelBased);
 }
 
 /**

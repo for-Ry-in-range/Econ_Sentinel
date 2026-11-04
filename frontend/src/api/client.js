@@ -38,8 +38,8 @@ export function createApiClient(getIdToken) {
     if (query) {
       for (const [k, v] of Object.entries(query)) {
         if (v !== undefined && v !== null && v !== '') {
-        }
           url.searchParams.set(k, v);
+        }
       }
     }
 

@@ -25,6 +25,12 @@ export function isConfigured() {
  * Unknown metrics fall back to a title-cased key via metricLabel().
  */
 export const METRIC_META = {
+  composite_stress_index: {
+    label: 'Econ Sentinel Composite Index',
+    description: 'Weighted average of every metric’s latest risk score (0–100)',
+    unit: 'score',
+    levelBased: true,
+  },
   initial_jobless_claims: {
     label: 'Initial Jobless Claims',
     description: 'Weekly U.S. initial unemployment insurance claims',
@@ -36,7 +42,7 @@ export const METRIC_META = {
     unit: 'pts',
     levelBased: true, // scored on the spread's value, not percent change
   },
-  port_la_vessel_queue: {
+  port_congestion_los_angeles: {
     label: 'Port of LA Vessel Queue',
     description: 'Vessels waiting in the Port of Los Angeles queue',
     unit: 'vessels',

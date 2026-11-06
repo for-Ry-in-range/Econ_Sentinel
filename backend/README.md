@@ -139,6 +139,9 @@ Lambda functions use these environment variables (set automatically by CDK):
 - `RISK_SCORES_TABLE_NAME`: DynamoDB table for risk scores
 - `ALERT_RULES_TABLE_NAME`: DynamoDB table for alert rules
 - `RAW_DATA_BUCKET_NAME`: S3 bucket for raw data
+- `SES_SENDER_EMAIL`: "From" address for user-facing risk alert emails
+- `OPS_ALERT_EMAIL` (optional, set before `cdk deploy`): ops email address where Lambda 
+  errors found by Cloudwatch alarms are emailed to
 
 ## Adding Authentication
 
@@ -193,8 +196,8 @@ lambda_handler(event, None)
 
 ## Next Steps
 
-- [ ] Implement alert dispatch logic (SES/SNS integration)
-- [ ] Add Cognito authentication
-- [ ] Add CloudWatch alarms for error monitoring
+- [x] Implement alert dispatch logic (SES integration)
+- [x] Add Cognito authentication
+- [x] Add CloudWatch alarms for error monitoring
+- [x] Add unit tests
 - [ ] Optimize DynamoDB queries with caching
-- [ ] Add unit tests

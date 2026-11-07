@@ -16,6 +16,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 from shared.risk_calculator import RiskCalculator
 from shared.dynamodb_client import DynamoDBClient
 from shared.data_parser import DataParser
+from shared.composite_index import COMPOSITE_METRIC, compute_composite
 
 
 s3_client = boto3.client('s3')
@@ -49,12 +50,15 @@ def lambda_handler(event: Dict[str, Any], context: Any):
     processed_count = 0
     skipped_count = 0
     errors = []
-    
+    any_daily_updates = False  # recompute the composite only for real, non-backfill events
+    last_object_key = ''
+
     # Go through each S3 record
     for record in event.get('Records', []):
         try:
             bucket_name = record['s3']['bucket']['name']
             object_key = record['s3']['object']['key']
+            last_object_key = object_key
             
             print(f"Processing s3://{bucket_name}/{object_key}")
         
@@ -108,6 +112,8 @@ def lambda_handler(event: Dict[str, Any], context: Any):
                     )
                     if scored:
                         processed_count += 1
+                        if not backfill:
+                            any_daily_updates = True
                     else:
                         skipped_count += 1
                 except Exception as e:
@@ -119,7 +125,15 @@ def lambda_handler(event: Dict[str, Any], context: Any):
             error_msg = f"Error processing record: {str(e)}"
             print(error_msg)
             errors.append(error_msg)
-    
+
+    if any_daily_updates:
+        try:
+            update_composite_index(last_object_key)
+        except Exception as e:
+            error_msg = f"Error updating composite index: {str(e)}"
+            print(error_msg)
+            errors.append(error_msg)
+
     result = {
         'statusCode': 200,
         'processed_count': processed_count,
@@ -187,6 +201,36 @@ def process_metric(metric: str, value: float, timestamp: str, source_object_key:
     return True
 
 
+def update_composite_index(source_object_key: str):
+    """
+    Recompute the overall stress index using each metric's latest score, and save it
+    """
+    latest_scores = {}
+    for metric in dynamodb_client.get_all_metrics():
+        if metric == COMPOSITE_METRIC:
+            continue
+        latest_scores[metric] = dynamodb_client.get_latest_score(metric)
+
+    composite = compute_composite(latest_scores)
+    if composite is None:
+        print("No metric has a usable score yet, so the composite index is not updated")
+        return
+
+    timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT00:00:00Z')
+    dynamodb_client.save_risk_score(
+        metric=COMPOSITE_METRIC,
+        timestamp=timestamp,
+        value=composite['risk_score'],
+        moving_avg_30d=None,
+        pct_change=None,
+        risk_score=composite['risk_score'],
+        severity=composite['severity'],
+        source_object_key=source_object_key
+    )
+    print(f"Updated {COMPOSITE_METRIC}: {composite['severity']} (score: {composite['risk_score']}, "
+          f"from {composite['contributors']})")
+
+
 def should_send_alerts(metric: str, timestamp: str, backfill: bool, is_revision: bool) -> bool:
     """
     Decide whether a warning/critical score should email subscribers.
@@ -245,7 +289,10 @@ def trigger_alerts(metric: str, risk_assessment: Dict[str, Any], value: float):
         if not rule.get('enabled', True):
             continue
         threshold = float(rule.get('threshold', 0))
-        if abs(risk_assessment['pct_change']) >= threshold:
+        # pct_change is None for level-based metrics with no baseline yet (eg. yield curve on
+        # its first observation); severity already reflects the signal, so alert regardless.
+        pct_change = risk_assessment['pct_change']
+        if pct_change is None or abs(pct_change) >= threshold:
             email = rule.get('email')
             if email and SENDER_EMAIL:
                 _send_alert_email(email, metric, risk_assessment, value, rule)

@@ -31,6 +31,13 @@ class FakeDB:
         self.saves += 1
         self.rows[(item['metric'], item['timestamp'])] = item
 
+    def get_all_metrics(self):
+        return sorted({m for m, _ in self.rows})
+
+    def get_latest_score(self, metric):
+        rows_for_metric = [row for (m, _), row in sorted(self.rows.items()) if m == metric]
+        return rows_for_metric[-1] if rows_for_metric else None
+
 
 # Fixture: runs first (when it's in the parameter of the test) to setup before the test runs
 
@@ -176,3 +183,27 @@ def test_insufficient_data_never_alerts(db, alerts):
 ])
 def test_is_recent_observation(timestamp, expected):
     assert handler.is_recent_observation(timestamp) is expected
+
+
+def test_composite_index_updates_after_a_real_daily_event(db, alerts):
+    db.rows[('yield_curve_10y2y', ts(1))] = {'value': -0.40, 'risk_score': 90, 'severity': 'critical'}
+    for k in (28, 21, 14, 7):
+        db.rows[('initial_jobless_claims', ts(k))] = {'value': 100.0, 'risk_score': 0, 'severity': 'normal'}
+
+    s3_event(weekly_payload([100, 100, 100, 100, 100], backfill=False))
+
+    composite_rows = [row for (m, _), row in db.rows.items() if m == 'composite_stress_index']
+    assert len(composite_rows) == 1
+    assert composite_rows[0]['risk_score'] == 60
+    assert composite_rows[0]['severity'] == 'warning'
+    alerts.assert_not_called()  # the jobless claims observation itself didn't change
+
+
+def test_composite_index_not_updated_for_backfill_only_event(db, alerts):
+    # Set up mock DynamoDB data
+    db.rows[('yield_curve_10y2y', ts(1))] = {'value': -0.40, 'risk_score': 90, 'severity': 'critical'}
+    # Add backfill data to S3, which calls the handler
+    s3_event(weekly_payload([100, 100, 100, 100, 130, 100], backfill=True))
+
+    # Shouldn't be any composite index in DynamoDB
+    assert not any(m == 'composite_stress_index' for (m, _) in db.rows)

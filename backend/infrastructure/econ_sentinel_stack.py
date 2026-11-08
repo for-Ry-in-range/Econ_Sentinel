@@ -24,6 +24,10 @@ from aws_cdk import (
     aws_events_targets as events_targets,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as cloudfront_origins,
+    aws_cloudwatch as cloudwatch,
+    aws_cloudwatch_actions as cloudwatch_actions,
+    aws_sns as sns,
+    aws_sns_subscriptions as sns_subscriptions,
     CfnOutput,
 )
 from constructs import Construct
@@ -175,6 +179,38 @@ class EconSentinelStack(Stack):
 
         risk_scores_table.grant_read_data(api_lambda)
         alert_rules_table.grant_read_write_data(api_lambda)
+
+        # Ops Alerting: email the ops team when an error happens in Lambda
+        ops_alert_email = os.environ.get("OPS_ALERT_EMAIL", os.environ.get("SES_SENDER_EMAIL", ""))
+
+        ops_alarm_topic = sns.Topic(
+            self,
+            "OpsAlarmTopic",
+            topic_name="econ-sentinel-ops-alarms",
+            display_name="Econ Sentinel Ops Alarms",
+        )
+        if ops_alert_email:
+            ops_alarm_topic.add_subscription(
+                sns_subscriptions.EmailSubscription(ops_alert_email)
+            )
+
+        def add_error_alarm(fn: _lambda.Function, alarm_id: str):
+            alarm = cloudwatch.Alarm(
+                self,
+                alarm_id,
+                alarm_name=f"econ-sentinel-{fn.function_name}-errors",
+                metric=fn.metric_errors(period=Duration.minutes(5)),
+                threshold=1,
+                evaluation_periods=1,
+                comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+                alarm_description=f"{fn.function_name} reported at least one error in the last 5 minutes",
+                # A Lambda with no invocations reports no data, not zero errors; don't alarm on that.
+                treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+            )
+            alarm.add_alarm_action(cloudwatch_actions.SnsAction(ops_alarm_topic))
+
+        add_error_alarm(analysis_lambda, "AnalysisLambdaErrorsAlarm")
+        add_error_alarm(api_lambda, "ApiLambdaErrorsAlarm")
 
         # Cognito user pool
         user_pool = cognito.UserPool(
@@ -412,6 +448,13 @@ class EconSentinelStack(Stack):
             "AlertRulesTableName",
             value=alert_rules_table.table_name,
             description="DynamoDB table for user alert rules"
+        )
+
+        CfnOutput(
+            self,
+            "OpsAlarmTopicArn",
+            value=ops_alarm_topic.topic_arn,
+            description="SNS topic for Lambda error alarms"
         )
 
         CfnOutput(

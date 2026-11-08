@@ -91,6 +91,18 @@ class RiskCalculator:
             return Severity.CRITICAL
     
     @staticmethod
+    def severity_for_score(risk_score: int) -> Severity:
+        """
+        Severity for an already-computed 0-100 score: 0-30, 31-70, 71-100
+        """
+        if risk_score <= 30:
+            return Severity.NORMAL
+        elif risk_score <= 70:
+            return Severity.WARNING
+        else:
+            return Severity.CRITICAL
+
+    @staticmethod
     def calculate_risk(current_value: float, moving_avg: float) -> Dict[str, any]:
         """
         Create complete risk assessment.

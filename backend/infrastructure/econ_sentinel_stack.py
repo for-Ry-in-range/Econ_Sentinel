@@ -32,6 +32,27 @@ from aws_cdk import (
 )
 from constructs import Construct
 import os
+import shutil
+
+# Where the shared layer is stored temporarily before CDK zips it
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+SHARED_DIR = os.path.join(BACKEND_DIR, 'shared')
+LAYER_BUILD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.layer_build')
+
+
+def stage_shared_layer() -> str:
+    """
+    Copy /shared folder in this repo into .layer_build/python/shared so it can be zipped and 
+    deployed as a Lambda layer. Lambda later will unpack this code to be usable in AWS.
+    """
+    target = os.path.join(LAYER_BUILD_DIR, 'python', 'shared')
+    shutil.rmtree(LAYER_BUILD_DIR, ignore_errors=True)
+    shutil.copytree(
+        SHARED_DIR,
+        target,
+        ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'tests'),
+    )
+    return LAYER_BUILD_DIR
 
 
 class EconSentinelStack(Stack):
@@ -120,9 +141,18 @@ class EconSentinelStack(Stack):
             )
         )
 
-        # Lambda functions:
 
-        # Analysis Lambda
+        # Shared code Lambda layer
+        shared_layer = _lambda.LayerVersion(
+            self,
+            "SharedCodeLayer",
+            layer_version_name="econ-sentinel-shared",
+            code=_lambda.Code.from_asset(stage_shared_layer()),
+            compatible_runtimes=[_lambda.Runtime.PYTHON_3_12],
+            description="backend/shared modules used by the analysis and API Lambdas",
+        )
+
+        # Analysis Lambda function
         analysis_lambda = _lambda.Function(
             self,
             "AnalysisLambda",
@@ -130,7 +160,8 @@ class EconSentinelStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="handler.lambda_handler",
             code=_lambda.Code.from_asset("../lambdas/analysis"),
-            timeout=Duration.minutes(5),
+            layers=[shared_layer], # allow the function to use code from the shared layer
+            timeout=Duration.minutes(5), 
             memory_size=512,
             environment={
                 "RISK_SCORES_TABLE_NAME": risk_scores_table.table_name,
@@ -168,6 +199,7 @@ class EconSentinelStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="handler.lambda_handler",
             code=_lambda.Code.from_asset("../lambdas/api"),
+            layers=[shared_layer], # allow the function to use code from the shared layer
             timeout=Duration.seconds(30),
             memory_size=256,
             environment={

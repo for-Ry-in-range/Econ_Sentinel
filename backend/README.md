@@ -10,6 +10,7 @@ Backend infrastructure and Lambda functions for Econ Sentinel.
   - `risk_scores`: Stores calculated risk scores
   - `user_alert_rules`: Stores user alert preferences
 - **API Gateway**: REST API endpoint for frontend
+- **Shared layer**: `shared/` is packaged as a Lambda layer so it can be used by both Lambda functions
 
 ## Project Structure
 
@@ -70,6 +71,9 @@ cdk bootstrap
 ```bash
 cdk deploy
 ```
+   The `shared/` folder is deployed as a Lambda layer (`econ-sentinel-shared`). At synth time
+   the stack copies it into `infrastructure/.layer_build/python/shared` (gitignored) and
+   attaches the layer to both Lambdas, so there's nothing to copy by hand.
 
 3. Note the API endpoint URL from the stack outputs.
 

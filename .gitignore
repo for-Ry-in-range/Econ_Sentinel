@@ -24,3 +24,6 @@ backend/infrastructure/.venv/
 backend/lambdas/*/boto3/
 backend/lambdas/*/botocore/
 backend/lambdas/*/*.dist-info/
+
+# Lambda layer staging
+backend/infrastructure/.layer_build/

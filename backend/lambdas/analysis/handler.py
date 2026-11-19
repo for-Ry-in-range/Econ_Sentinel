@@ -9,7 +9,7 @@ import json
 import os
 import boto3
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
@@ -216,6 +216,10 @@ def update_composite_index(source_object_key: str):
         print("No metric has a usable score yet, so the composite index is not updated")
         return
 
+    # Read the score being replaced before saving, to tell if a user's threshold was just crossed
+    previous = dynamodb_client.get_latest_score(COMPOSITE_METRIC)
+    previous_score = previous.get('risk_score') if previous else None
+
     timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT00:00:00Z')
     dynamodb_client.save_risk_score(
         metric=COMPOSITE_METRIC,
@@ -225,10 +229,37 @@ def update_composite_index(source_object_key: str):
         pct_change=None,
         risk_score=composite['risk_score'],
         severity=composite['severity'],
-        source_object_key=source_object_key
+        source_object_key=source_object_key,
+        components=composite['components']
     )
     print(f"Updated {COMPOSITE_METRIC}: {composite['severity']} (score: {composite['risk_score']}, "
           f"from {composite['contributors']})")
+
+    trigger_composite_alerts(composite, previous_score)
+
+
+def trigger_composite_alerts(composite: Dict[str, Any], previous_score: Optional[float]):
+    """
+    Email users if their composite index threshold was crossed
+    """
+    score = composite['risk_score']
+    alert_rules = dynamodb_client.get_alert_rules_for_metric(COMPOSITE_METRIC)
+    triggered_count = 0
+
+    for rule in alert_rules:
+        if not rule.get('enabled', True):
+            continue
+        threshold = float(rule.get('threshold', 0))
+        if score < threshold:
+            continue
+        if previous_score is not None and float(previous_score) >= threshold:
+            continue  # not the first time in this threshold
+        email = rule.get('email')
+        if email and SENDER_EMAIL:
+            _send_composite_alert_email(email, composite, previous_score, rule)
+            triggered_count += 1
+
+    print(f"Triggered {triggered_count} alert(s) for {COMPOSITE_METRIC}")
 
 
 def should_send_alerts(metric: str, timestamp: str, backfill: bool, is_revision: bool) -> bool:
@@ -307,18 +338,49 @@ def _send_alert_email(recipient: str, metric: str, risk_assessment: Dict[str, An
     pct_change = risk_assessment['pct_change']
     risk_score = risk_assessment['risk_score']
 
+    # pct_change is None for the yield curve when it has no earlier values yet
+    change_text = f"{pct_change:+.2f}%" if pct_change is not None else "n/a"
+
     subject = f"Econ Sentinel - {severity} Alert: {metric}"
     body = (
         f"Econ Sentinel Alert\n\n"
         f"Metric:            {metric}\n"
         f"Severity:          {severity}\n"
         f"Current Value:     {value}\n"
-        f"Change (30d avg):  {pct_change:+.2f}%\n"
+        f"Change (30d avg):  {change_text}\n"
         f"Risk Score:        {risk_score}/100\n"
         f"Your Threshold:    {rule.get('threshold')}%\n\n"
         f"Log in to Econ Sentinel to view the full dashboard."
     )
+    _send_email(recipient, subject, body, metric)
 
+
+def _send_composite_alert_email(recipient: str, composite: Dict[str, Any], previous_score: Optional[float], rule: Dict[str, Any]):
+    """Send a composite index alert email using SES"""
+    severity = composite['severity'].upper()
+    previous_text = f"{int(previous_score)}/100" if previous_score is not None else "n/a"
+    # Biggest contribution first: weight x score
+    ranked = sorted(composite['components'], key=lambda c: c['weight'] * c['risk_score'], reverse=True)
+    breakdown = "".join(
+        f"  {c['metric']}: {c['risk_score']}/100 (weight {c['weight']:g})\n" for c in ranked
+    )
+
+    subject = f"Econ Sentinel - {severity} Alert: Composite Stress Index"
+    body = (
+        f"Econ Sentinel Alert\n\n"
+        f"Metric:            Composite Stress Index\n"
+        f"Severity:          {severity}\n"
+        f"Score:             {composite['risk_score']}/100\n"
+        f"Previous Score:    {previous_text}\n"
+        f"Your Threshold:    {rule.get('threshold'):g}/100\n\n"
+        f"What's behind the score:\n"
+        f"{breakdown}\n"
+        f"Log in to Econ Sentinel to view the full dashboard."
+    )
+    _send_email(recipient, subject, body, COMPOSITE_METRIC)
+
+
+def _send_email(recipient: str, subject: str, body: str, metric: str):
     try:
         ses_client.send_email(
             Source=SENDER_EMAIL,

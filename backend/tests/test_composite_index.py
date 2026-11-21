@@ -56,3 +56,16 @@ def test_severity_bands_match_risk_calculator():
     assert compute_composite({'m': score(31)})['severity'] == 'warning'
     assert compute_composite({'m': score(70)})['severity'] == 'warning'
     assert compute_composite({'m': score(71)})['severity'] == 'critical'
+
+
+def test_components_list_each_metrics_score_and_weight():
+    result = compute_composite({
+        'yield_curve_10y2y': score(90),
+        'initial_jobless_claims': score(0),
+        'port_congestion_los_angeles': {'severity': 'insufficient_data', 'risk_score': None},
+    })
+    # The metric with no score shouldn't be a component
+    assert result['components'] == [
+        {'metric': 'initial_jobless_claims', 'risk_score': 0, 'weight': 1.0},
+        {'metric': 'yield_curve_10y2y', 'risk_score': 90, 'weight': 2.0},
+    ]

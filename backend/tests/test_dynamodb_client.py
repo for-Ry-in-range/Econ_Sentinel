@@ -64,3 +64,27 @@ def test_get_score_returns_none_when_missing():
     client = make_client()
     client.risk_scores_table.get_item.return_value = {}
     assert client.get_score('m', '2025-09-15T00:00:00Z') is None
+
+
+def test_save_risk_score_stores_composite_components_with_decimal_weights():
+    client = make_client()
+    client.save_risk_score(
+        metric='composite_stress_index', timestamp='2025-09-15T00:00:00Z', value=60,
+        moving_avg_30d=None, pct_change=None, risk_score=60,
+        severity='warning', source_object_key='key.json',
+        components=[{'metric': 'yield_curve_10y2y', 'risk_score': 90, 'weight': 2.0}],
+    )
+    item = client.risk_scores_table.put_item.call_args.kwargs['Item']
+    assert item['components'] == [
+        {'metric': 'yield_curve_10y2y', 'risk_score': 90, 'weight': Decimal('2.0')},
+    ]
+
+
+def test_save_risk_score_has_no_components_for_ordinary_metrics():
+    client = make_client()
+    client.save_risk_score(
+        metric='m', timestamp='2025-09-15T00:00:00Z', value=5.0,
+        moving_avg_30d=4.0, pct_change=25.0, risk_score=80,
+        severity='critical', source_object_key='key.json',
+    )
+    assert 'components' not in client.risk_scores_table.put_item.call_args.kwargs['Item']

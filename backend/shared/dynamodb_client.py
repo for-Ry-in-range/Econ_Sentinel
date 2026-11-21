@@ -31,7 +31,8 @@ class DynamoDBClient:
         pct_change: Optional[float],
         risk_score: Optional[int],
         severity: str,
-        source_object_key: str
+        source_object_key: str,
+        components: Optional[List[Dict]] = None
     ):
         """
         Save a risk score to DynamoDB.
@@ -45,6 +46,7 @@ class DynamoDBClient:
             risk_score: Risk score (None if insufficient data)
             severity: Severity level
             source_object_key: key of the S3 object that was scored
+            components: composite index only; each metric's risk_score and weight
         """
         item = {
             'metric': metric,
@@ -60,6 +62,16 @@ class DynamoDBClient:
             item['pct_change'] = Decimal(str(pct_change))
         if risk_score is not None:
             item['risk_score'] = risk_score
+        if components:
+            # DynamoDB doesn't accept floats
+            item['components'] = [
+                {
+                    'metric': c['metric'],
+                    'risk_score': int(c['risk_score']),
+                    'weight': Decimal(str(c['weight'])),
+                }
+                for c in components
+            ]
         self.risk_scores_table.put_item(Item=item)
 
     def get_score(self, metric: str, timestamp: str):

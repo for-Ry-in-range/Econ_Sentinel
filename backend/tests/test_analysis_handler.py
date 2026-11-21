@@ -14,6 +14,7 @@ class FakeDB:
     def __init__(self):
         self.rows = {}
         self.saves = 0
+        self.rules = []  # alert rules, for every metric
 
     def get_score(self, metric, timestamp):
         return self.rows.get((metric, timestamp))
@@ -37,6 +38,9 @@ class FakeDB:
     def get_latest_score(self, metric):
         rows_for_metric = [row for (m, _), row in sorted(self.rows.items()) if m == metric]
         return rows_for_metric[-1] if rows_for_metric else None
+
+    def get_alert_rules_for_metric(self, metric):
+        return [rule for rule in self.rules if rule['metric'] == metric]
 
 
 # Fixture: runs first (when it's in the parameter of the test) to setup before the test runs
@@ -207,3 +211,80 @@ def test_composite_index_not_updated_for_backfill_only_event(db, alerts):
 
     # Shouldn't be any composite index in DynamoDB
     assert not any(m == 'composite_stress_index' for (m, _) in db.rows)
+
+
+def test_composite_index_saves_what_each_metric_contributed(db, alerts):
+    db.rows[('yield_curve_10y2y', ts(1))] = {'value': -0.40, 'risk_score': 90, 'severity': 'critical'}
+    for k in (28, 21, 14, 7):
+        db.rows[('initial_jobless_claims', ts(k))] = {'value': 100.0, 'risk_score': 0, 'severity': 'normal'}
+
+    s3_event(weekly_payload([100], backfill=False)) # Today's data
+
+    composite = db.get_latest_score('composite_stress_index')
+    assert composite['components'] == [
+        {'metric': 'initial_jobless_claims', 'risk_score': 0, 'weight': 1.0},
+        {'metric': 'yield_curve_10y2y', 'risk_score': 90, 'weight': 2.0},
+    ]
+
+
+# Lets the composite alert code go all the way to "sending", then records the emails
+@pytest.fixture
+def composite_emails():
+    with patch.object(handler, 'SENDER_EMAIL', 'alerts@example.com'), \
+            patch.object(handler, '_send_email') as mock: # if _send_email is called, it is recorded but nothing happens
+        yield mock # gives the function using this fixture to check any of the patched objects
+
+
+# Make a fake composite rule dict that can be inputted into the rules DB
+def composite_rule(threshold, enabled=True, email='user@example.com'):
+    return {'user_id': 'u1', 'metric': 'composite_stress_index', 'threshold': threshold,
+            'enabled': enabled, 'email': email}
+
+
+def composite(risk_score):
+    return {'risk_score': risk_score, 'severity': 'warning', 'contributors': ['m'],
+            'components': [{'metric': 'm', 'risk_score': risk_score, 'weight': 1.0}]}
+
+
+def test_composite_alert_sent_when_a_daily_event_pushes_it_over_the_threshold(db, alerts, composite_emails):
+    db.rules.append(composite_rule(50))
+    db.rows[('yield_curve_10y2y', ts(1))] = {'value': -0.40, 'risk_score': 90, 'severity': 'critical'}
+    for k in (28, 21, 14, 7):
+        db.rows[('initial_jobless_claims', ts(k))] = {'value': 100.0, 'risk_score': 0, 'severity': 'normal'}
+
+    s3_event(weekly_payload([100, 100, 100, 100, 100], backfill=False))  # composite becomes 60
+
+    composite_emails.assert_called_once()
+    recipient, subject, body, _ = composite_emails.call_args.args
+    assert recipient == 'user@example.com'
+    assert 'Composite Stress Index' in subject
+    assert '60/100' in body
+    assert 'yield_curve_10y2y: 90/100 (weight 2)' in body
+
+
+@pytest.mark.parametrize('previous_score, new_score, expected_emails', [
+    (None, 60, 1),  # first composite ever, is already over threshold
+    (40, 60, 1),    # crossed the threshold
+    (50, 60, 0),    # was already at the threshold, so the user has been told
+    (70, 60, 0),    # still over, but falling
+    (40, 49, 0),    # still under
+    (40, 50, 1),    # reaching the threshold exactly counts
+])
+def test_composite_alert_only_when_threshold_is_crossed(db, composite_emails, previous_score, new_score, expected_emails):
+    db.rules.append(composite_rule(50))
+    handler.trigger_composite_alerts(composite(new_score), previous_score)
+    assert composite_emails.call_count == expected_emails
+
+
+def test_composite_alert_skips_disabled_rules_and_rules_without_an_email(db, composite_emails):
+    db.rules.append(composite_rule(50, enabled=False))
+    db.rules.append(composite_rule(50, email=None))
+    handler.trigger_composite_alerts(composite(60), 40)
+    composite_emails.assert_not_called()
+
+
+def test_composite_alert_uses_each_users_own_threshold(db, composite_emails):
+    db.rules.append(composite_rule(31, email='low@example.com'))
+    db.rules.append(composite_rule(71, email='high@example.com'))
+    handler.trigger_composite_alerts(composite(60), 20)
+    assert [call.args[0] for call in composite_emails.call_args_list] == ['low@example.com']

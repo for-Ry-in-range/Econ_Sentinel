@@ -21,6 +21,7 @@ def compute_composite(latest_scores: Dict[str, Dict]) -> Optional[Dict]:
     weighted_total = 0.0
     weight_total = 0.0
     contributors = []
+    components = []  # what each metric put in, so the dashboard can show what drove the score
 
     for metric, score in latest_scores.items():
         # Metrics with no history yet are excluded
@@ -30,6 +31,11 @@ def compute_composite(latest_scores: Dict[str, Dict]) -> Optional[Dict]:
         weighted_total += weight * float(score['risk_score'])
         weight_total += weight
         contributors.append(metric)
+        components.append({
+            "metric": metric,
+            "risk_score": int(round(float(score['risk_score']))),
+            "weight": weight,
+        })
 
     if weight_total == 0:
         return None
@@ -39,4 +45,5 @@ def compute_composite(latest_scores: Dict[str, Dict]) -> Optional[Dict]:
         "risk_score": risk_score,
         "severity": RiskCalculator.severity_for_score(risk_score).value,
         "contributors": sorted(contributors),
+        "components": sorted(components, key=lambda c: c["metric"]),
     }

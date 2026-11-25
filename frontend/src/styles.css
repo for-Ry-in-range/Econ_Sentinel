@@ -420,3 +420,34 @@ form select:focus {
   margin-bottom: 1rem;
   font-size: 0.9rem;
 }
+
+/* Composite index card */
+.stat-outof {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.score-card-components {
+  display: block;
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.component-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.1rem 0;
+}
+.component-name {
+  color: var(--muted);
+  text-align: left;
+}
+.component-weight {
+  font-size: 0.75rem;
+}
+.component-score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}

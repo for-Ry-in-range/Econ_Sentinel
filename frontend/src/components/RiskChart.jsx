@@ -9,7 +9,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { metricLabel } from '../config.js';
+import { metricLabel, isScoreBased } from '../config.js';
 
 /**
  * Time-series chart for a single metric. `scores` is the array returned by
@@ -28,6 +28,8 @@ export default function RiskChart({ metric, scores }) {
       }));
   }, [scores]);
 
+  const scoreBased = isScoreBased(metric);
+
   if (data.length === 0) {
     return (
       <div className="chart-empty">
@@ -43,38 +45,42 @@ export default function RiskChart({ metric, scores }) {
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#eceff3" />
           <XAxis dataKey="date" tick={{ fontSize: 12 }} minTickGap={24} />
-          <YAxis
-            yAxisId="value"
-            tick={{ fontSize: 12 }}
-            width={64}
-            domain={['auto', 'auto']}
-          />
+          {!scoreBased && (
+            <YAxis
+              yAxisId="value"
+              tick={{ fontSize: 12 }}
+              width={64}
+              domain={['auto', 'auto']}
+            />
+          )}
           <YAxis
             yAxisId="risk"
-            orientation="right"
+            orientation={scoreBased ? 'left' : 'right'}
             domain={[0, 100]}
             tick={{ fontSize: 12 }}
             width={40}
           />
           <Tooltip />
           <Legend />
-          <Line
-            yAxisId="value"
-            type="monotone"
-            dataKey="value"
-            name="Value"
-            stroke="#1f6feb"
-            strokeWidth={2}
-            dot={false}
-          />
+          {!scoreBased && (
+            <Line
+              yAxisId="value"
+              type="monotone"
+              dataKey="value"
+              name="Value"
+              stroke="#1f6feb"
+              strokeWidth={2}
+              dot={false}
+            />
+          )}
           <Line
             yAxisId="risk"
             type="monotone"
             dataKey="risk_score"
-            name="Risk score"
+            name={scoreBased ? 'Stress score' : 'Risk score'}
             stroke="#c62828"
             strokeWidth={2}
-            strokeDasharray="5 4"
+            strokeDasharray={scoreBased ? undefined : '5 4'}
             dot={false}
           />
         </LineChart>

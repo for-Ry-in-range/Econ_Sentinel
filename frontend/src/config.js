@@ -29,7 +29,7 @@ export const METRIC_META = {
     label: 'Econ Sentinel Composite Index',
     description: 'Weighted average of every metric’s latest risk score (0–100)',
     unit: 'score',
-    levelBased: true,
+    scoreBased: true, // its value is already a 0-100 risk score, no 30d average
   },
   initial_jobless_claims: {
     label: 'Initial Jobless Claims',
@@ -64,6 +64,14 @@ export function metricDescription(metric) {
 /** Returns true for metrics scored on value instead of percent change **/
 export function isLevelBased(metric) {
   return Boolean(METRIC_META[metric]?.levelBased);
+}
+
+/**
+ * Returns true for the composite index, whose value is itself a 0-100 score.
+ * Its alert threshold is a score, not a percent change.
+ **/
+export function isScoreBased(metric) {
+  return Boolean(METRIC_META[metric]?.scoreBased);
 }
 
 /**

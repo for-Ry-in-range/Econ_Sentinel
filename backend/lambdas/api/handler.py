@@ -11,6 +11,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 from shared.dynamodb_client import DynamoDBClient
+from shared.composite_index import COMPOSITE_METRIC
 
 
 dynamodb_client = DynamoDBClient()
@@ -145,6 +146,10 @@ def create_or_update_alert(user_id: Optional[str], body: Dict[str, Any]):
         threshold_float = float(threshold)
     except (ValueError, TypeError):
         return create_response(400, {'error': 'threshold must be a number'})
+
+    # The composite index's threshold is a 0-100 score, not a percent change
+    if metric == COMPOSITE_METRIC and not 0 <= threshold_float <= 100:
+        return create_response(400, {'error': 'threshold for the composite index must be between 0 and 100'})
 
     dynamodb_client.save_alert_rule(user_id, metric, threshold_float, enabled, email)
 

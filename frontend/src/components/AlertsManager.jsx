@@ -1,12 +1,17 @@
 import { useEffect, useState, useCallback } from 'react';
-import { metricLabel } from '../config.js';
+import { metricLabel, isScoreBased } from '../config.js';
 import Loading from './Loading.jsx';
 import ErrorBanner from './ErrorBanner.jsx';
 
 /**
- * Manage the signed-in user's email alert rules
- * Thresholds are percent-change values
+ * JS component that manages the signed-in user's email alert rules
+ * Thresholds are percent-change values, except for the composite index,
+ * where the threshold is a 0-100 score.
  */
+
+// Score bands from the backend: 31+ is warning, 71+ is critical
+const DEFAULT_PCT_THRESHOLD = '15';   // "score changed by a decent amount"
+const DEFAULT_SCORE_THRESHOLD = '31'; // "composite index is decently high"
 export default function AlertsManager({ api, metrics, userEmail, onError }) {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -14,7 +19,8 @@ export default function AlertsManager({ api, metrics, userEmail, onError }) {
   const [saving, setSaving] = useState(false);
 
   const [metric, setMetric] = useState('');
-  const [threshold, setThreshold] = useState('15');
+  const [threshold, setThreshold] = useState(DEFAULT_PCT_THRESHOLD);
+  const scoreBased = isScoreBased(metric);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,17 +40,27 @@ export default function AlertsManager({ api, metrics, userEmail, onError }) {
     load();
   }, [load]);
 
+  // Picking a metric resets the threshold to that kind of metric's default,
+  // since 15 means something different as a percent than as a score.
+  const chooseMetric = useCallback((m) => {
+    setMetric(m);
+    setThreshold(isScoreBased(m) ? DEFAULT_SCORE_THRESHOLD : DEFAULT_PCT_THRESHOLD);
+  }, []);
+
   // Default the metric dropdown to the first available metric.
   useEffect(() => {
-    if (!metric && metrics.length > 0) setMetric(metrics[0]);
-  }, [metrics, metric]);
+    if (!metric && metrics.length > 0) chooseMetric(metrics[0]);
+  }, [metrics, metric, chooseMetric]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
     setError('');
     const thresholdNum = Number(threshold);
     if (!metric) return setError('Choose a metric.');
-    if (Number.isNaN(thresholdNum)) return setError('Threshold must be a number.');
+    if (threshold === '' || Number.isNaN(thresholdNum)) return setError('Threshold must be a number.');
+    if (scoreBased && (thresholdNum < 0 || thresholdNum > 100)) {
+      return setError('The composite index threshold is a score from 0 to 100.');
+    }
 
     setSaving(true);
     try {
@@ -95,6 +111,8 @@ export default function AlertsManager({ api, metrics, userEmail, onError }) {
       <h2>Email Alerts</h2>
       <p className="section-sub">
         Get an email when a metric moves more than your threshold (% vs its 30-day average).
+        For the composite index, the threshold is a score: you get one email when the index
+        rises to it (31 is where "warning" starts, 71 is "critical").
       </p>
 
       {/* If an error occurs, it displays in this ErrorBanner */}
@@ -103,7 +121,7 @@ export default function AlertsManager({ api, metrics, userEmail, onError }) {
       <form className="alert-form" onSubmit={handleCreate}>
         <label>
           Metric
-          <select value={metric} onChange={(e) => setMetric(e.target.value)}>
+          <select value={metric} onChange={(e) => chooseMetric(e.target.value)}>
             {metrics.length === 0 && <option value="">No metrics available</option>}
             {metrics.map((m) => (
               <option key={m} value={m}>
@@ -113,11 +131,12 @@ export default function AlertsManager({ api, metrics, userEmail, onError }) {
           </select>
         </label>
         <label>
-          Threshold (%)
+          {scoreBased ? 'Threshold (score 0–100)' : 'Threshold (%)'}
           <input
             type="number"
-            step="0.1"
+            step={scoreBased ? '1' : '0.1'}
             min="0"
+            max={scoreBased ? '100' : undefined}
             value={threshold}
             onChange={(e) => setThreshold(e.target.value)}
           />
@@ -145,7 +164,11 @@ export default function AlertsManager({ api, metrics, userEmail, onError }) {
             {alerts.map((rule) => (
               <tr key={rule.metric}>
                 <td>{metricLabel(rule.metric)}</td>
-                <td>{Number(rule.threshold)}%</td>
+                <td>
+                  {isScoreBased(rule.metric)
+                    ? `Score ≥ ${Number(rule.threshold)}`
+                    : `${Number(rule.threshold)}%`}
+                </td>
                 <td>
                   <span className={`pill ${rule.enabled ? 'on' : 'off'}`}>
                     {rule.enabled ? 'Enabled' : 'Disabled'}
